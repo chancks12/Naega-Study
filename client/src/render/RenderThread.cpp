@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "render/RenderThread.h"
 
+#include <chrono>
+
 RenderThread::RenderThread(CaptureThread::RenderFrameBuffer& frame_buffer)
     : frame_buffer_(frame_buffer)
 {
@@ -41,15 +43,14 @@ void RenderThread::run(HWND hwnd, AnalysisResultBuffer* result_buffer)
     }
 
     while (running_) {
-        Frame frame = frame_buffer_.wait_pop();
-        if (!running_) {
-            break;
-        }
+        auto frame_opt = frame_buffer_.wait_pop_for(std::chrono::milliseconds(33));
+        if (!running_) break;
 
-        if (frame.mat.empty()) {
+        if (!frame_opt || frame_opt->mat.empty()) {
+            renderer_.render_blank();
             continue;
         }
 
-        renderer_.upload_and_render(frame.mat);
+        renderer_.upload_and_render(frame_opt->mat);
     }
 }

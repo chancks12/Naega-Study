@@ -92,6 +92,26 @@ void D2DRenderer::upload_and_render(const cv::Mat& bgr)
     }
 }
 
+void D2DRenderer::render_blank()
+{
+    if (!render_target_) return;
+
+    apply_pending_resize();
+
+    render_target_->BeginDraw();
+    render_target_->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+
+    if (result_buffer_ && result_buffer_->has_data()) {
+        const AnalysisResult result = result_buffer_->read();
+        overlay_.draw(render_target_.Get(), result);
+    }
+
+    const HRESULT hr = render_target_->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET) {
+        recreate_target();
+    }
+}
+
 bool D2DRenderer::update_bgra_buffer(const cv::Mat& bgr)
 {
     const int channels = bgr.channels();

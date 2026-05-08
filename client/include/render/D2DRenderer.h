@@ -18,6 +18,7 @@ public:
 
     bool init(HWND hwnd, AnalysisResultBuffer& result_buffer);
     void upload_and_render(const cv::Mat& bgr);
+    void render_blank();
     void notify_resize(UINT w, UINT h);
 
     // 세션 시작 이후 set_session_start_ms / set_toast_buffer 호출 (렌더 스레드 안전)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <mutex>
@@ -37,6 +38,21 @@ public:
         if (count_ == 0) {
             return T{};
         }
+
+        T item = std::move(*buf_[read_]);
+        buf_[read_].reset();
+        read_ = (read_ + 1) % N;
+        --count_;
+        return item;
+    }
+
+    template <typename Rep, typename Period>
+    std::optional<T> wait_pop_for(std::chrono::duration<Rep, Period> timeout)
+    {
+        std::unique_lock<std::mutex> lock(mtx_);
+        const bool ready = cv_.wait_for(lock, timeout,
+                                        [this] { return count_ > 0 || closed_; });
+        if (!ready || count_ == 0) return std::nullopt;
 
         T item = std::move(*buf_[read_]);
         buf_[read_].reset();
