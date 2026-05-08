@@ -33,6 +33,16 @@ std::uint64_t now_ms()
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
+
+const char* event_type_name(PostureEventType type)
+{
+    switch (type) {
+    case PostureEventType::Drowsy: return "drowsy";
+    case PostureEventType::Absent: return "absent";
+    case PostureEventType::BadPosture:
+    default: return "distracted";
+    }
+}
 }
 
 LocalClaimCheckClipStore::LocalClaimCheckClipStore(std::string clip_directory, std::uint32_t retention_days)
@@ -83,6 +93,7 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
              << ",\"clip_id\":\"" << escape_json(clip_id) << "\""
              << ",\"clip_access\":\"local_only\""
              << ",\"clip_format\":\"mp4\""
+             << ",\"event_type\":\"" << event_type_name(event.type) << "\""
              << ",\"timestamp_ms\":" << event.timestamp_ms
              << ",\"reason\":\"" << escape_json(event.reason) << "\""
              << ",\"confidence\":" << event.confidence

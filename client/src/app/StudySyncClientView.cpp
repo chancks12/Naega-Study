@@ -190,6 +190,23 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
         });
         dummy_generator_.start(transport_config_.dummy_interval_ms);
     } else {
+        ai_tcp_client_.set_result_callback([this](const AnalysisResult& r) {
+            {
+                std::lock_guard<std::mutex> lock(calib_mtx_);
+                if (calibrating_) {
+                    calib_samples_.push_back(r.neck_angle);
+                    return;
+                }
+            }
+
+            stats_history_.push(r);
+
+            if (session_id_ > 0 && transports_.log_sink) {
+                transports_.log_sink->append_analysis(r);
+            }
+
+            alert_manager_.feed_local_analysis(r);
+        });
         ai_tcp_client_.start(
             transport_config_.ai_server_host,
             transport_config_.ai_server_port,

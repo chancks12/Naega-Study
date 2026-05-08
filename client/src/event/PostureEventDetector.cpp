@@ -2,6 +2,21 @@
 #include "event/PostureEventDetector.h"
 
 #include <chrono>
+#include <string>
+
+namespace {
+PostureEventType event_type_from_state(const std::string& state)
+{
+    if (state == "drowsy") return PostureEventType::Drowsy;
+    if (state == "absent") return PostureEventType::Absent;
+    return PostureEventType::BadPosture;
+}
+
+std::string reason_from_state(const std::string& previous, const std::string& current)
+{
+    return "state changed from " + (previous.empty() ? "unknown" : previous) + " to " + current;
+}
+}
 
 void PostureEventDetector::set_callback(EventCallback cb)
 {
@@ -10,6 +25,20 @@ void PostureEventDetector::set_callback(EventCallback cb)
 
 void PostureEventDetector::feed(const AnalysisResult& result, const EventShadowBuffer& shadow)
 {
+    if (!result.state.empty()) {
+        const std::string previous = last_state_;
+        if (previous != result.state) {
+            last_state_ = result.state;
+            event_cooldown_ = false;
+
+            if (result.state == "drowsy" || result.state == "distracted" || result.state == "absent") {
+                const std::string reason = reason_from_state(previous, result.state);
+                emit_event(event_type_from_state(result.state), reason.c_str(), result, shadow);
+            }
+        }
+        return;
+    }
+
     bad_posture_streak_ = (result.neck_angle > neck_threshold_ || !result.posture_ok) ? bad_posture_streak_ + 1 : 0;
     drowsy_streak_ = (result.ear < ear_threshold_ || result.drowsy) ? drowsy_streak_ + 1 : 0;
 
@@ -33,6 +62,7 @@ void PostureEventDetector::feed(const AnalysisResult& result, const EventShadowB
 void PostureEventDetector::reset_cooldown()
 {
     event_cooldown_ = false;
+    last_state_.clear();
 }
 
 void PostureEventDetector::emit_event(PostureEventType type, const char* reason, const AnalysisResult& result, const EventShadowBuffer& shadow)

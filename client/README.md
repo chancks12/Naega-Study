@@ -66,7 +66,7 @@ flowchart LR
 }
 ```
 
-`phone_detected`는 현재 클라이언트 범위에서 사용하지 않습니다. 휴대폰 감지는 붙이지 않는 방향으로 고정합니다.
+`phone_detected`는 클라이언트 feature 계약에서 제외합니다. 휴대폰 존재만으로는 딴짓 여부를 판단하기 어렵고, 번역기/계산기처럼 학습 중 정상 사용도 가능하므로 Yolo/Hand tracking 기반 phone 판정은 이번 범위에서 제거합니다.
 
 ## 4. 메인서버 통신 기준
 
@@ -96,7 +96,7 @@ flowchart LR
 | AI 서버 | `10.10.10.50:9100` |
 | 캡처 FPS | `30` |
 | AI 샘플링 | `frame_sample_interval = 6` |
-| 더미 AI | `use_dummy_ai = true` |
+| 더미 AI | `use_dummy_ai = false` |
 
 `frame_sample_interval = 6`은 30fps 기준 약 5fps 전송을 의미합니다.
 

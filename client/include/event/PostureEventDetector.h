@@ -5,6 +5,7 @@
 #include "model/PostureEvent.h"
 
 #include <functional>
+#include <string>
 
 class PostureEventDetector {
 public:
@@ -25,6 +26,7 @@ private:
     int bad_posture_streak_ = 0;
     int drowsy_streak_ = 0;
     bool event_cooldown_ = false;
+    std::string last_state_;
 
     double neck_threshold_ = 25.0;   // 캘리브레이션으로 덮어씀
     float  ear_threshold_  = 0.25f;

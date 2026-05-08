@@ -58,6 +58,16 @@ static int extract_int(const std::string& j, const std::string& key, int fallbac
     return digits.empty() ? fallback : std::stoi(digits);
 }
 
+static const char* event_type_name(PostureEventType type)
+{
+    switch (type) {
+    case PostureEventType::Drowsy: return "drowsy";
+    case PostureEventType::Absent: return "absent";
+    case PostureEventType::BadPosture:
+    default: return "distracted";
+    }
+}
+
 void JsonlBatchUploader::flush_to_http(const std::string& endpoint)
 {
     const std::string body = drain_jsonl();
@@ -130,6 +140,7 @@ std::string JsonlBatchUploader::to_jsonl(const PostureEvent& event) const
     out << "{\"kind\":\"event\""
         << ",\"session_id\":"   << session_id_
         << ",\"event_id\":\""   << escape_json(event.event_id) << "\""
+        << ",\"event_type\":\"" << event_type_name(event.type) << "\""
         << ",\"timestamp_ms\":" << event.timestamp_ms
         << ",\"reason\":\""     << escape_json(event.reason) << "\""
         << ",\"confidence\":"   << event.confidence
@@ -144,6 +155,7 @@ std::string JsonlBatchUploader::to_jsonl(const PostureEvent& event, const ClipRe
     out << "{\"kind\":\"event\""
         << ",\"session_id\":"   << session_id_
         << ",\"event_id\":\""   << escape_json(event.event_id) << "\""
+        << ",\"event_type\":\"" << event_type_name(event.type) << "\""
         << ",\"timestamp_ms\":" << event.timestamp_ms
         << ",\"reason\":\""     << escape_json(event.reason) << "\""
         << ",\"frame_count\":"  << clip_ref.frame_count

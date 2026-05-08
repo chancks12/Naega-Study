@@ -135,6 +135,9 @@ void AiTcpClient::run(std::string host,
 
             result_buffer_.update(result);
             detector_.feed(result, shadow_buffer_);
+            if (result_callback_) {
+                result_callback_(result);
+            }
         }
 
         close_socket(socket);

@@ -27,6 +27,6 @@ struct ClientTransportConfig {
     // AI 서버 준비 전 더미 분석결과 생성기 활성화
     // true  → DummyAnalysisGenerator 사용 (AiTcpClient 비활성)
     // false → AiTcpClient 사용 (실제 AI 서버 연결)
-    bool use_dummy_ai = true;
+    bool use_dummy_ai = false;
     int  dummy_interval_ms = 200; // 더미 생성 주기 (200ms ≈ 5fps)
 };

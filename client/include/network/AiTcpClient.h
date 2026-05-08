@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -40,6 +41,9 @@ public:
 
     bool is_connected() const { return connected_.load(); }
 
+    using ResultCallback = std::function<void(const AnalysisResult&)>;
+    void set_result_callback(ResultCallback cb) { result_callback_ = std::move(cb); }
+
 private:
     void run(std::string host, std::uint16_t port, long long session_id, int sample_interval);
 
@@ -69,6 +73,8 @@ private:
     PostureEventDetector detector_;
 
     LocalMediaPipePoseAnalyzer pose_analyzer_;   // 클라이언트 로컬 keypoint 추출기
+
+    ResultCallback result_callback_;
 
     std::atomic_bool running_{ false };
     std::atomic_bool connected_{ false };

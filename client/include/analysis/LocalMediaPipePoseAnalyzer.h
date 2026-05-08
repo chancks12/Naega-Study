@@ -23,6 +23,10 @@ public:
     void shutdown() override;
 
 private:
+    // Target MediaPipe feature contract:
+    // Pose: neck_angle, shoulder_diff.
+    // Face Mesh: ear, head_yaw, head_pitch, face_detected.
+    // Phone detection is intentionally excluded from the client feature set.
     double detect_ear(const cv::Mat& gray, const cv::Rect& face_rect);
 
     cv::CascadeClassifier face_cascade_;
