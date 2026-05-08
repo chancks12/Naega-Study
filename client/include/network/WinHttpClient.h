@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -33,6 +34,7 @@ public:
     void set_base_url(const std::string& base_url);
     void set_token(const std::string& jwt);
     void clear_token();
+    void set_unauthorized_callback(std::function<void()> cb);
 
     HttpResponse get(const std::string& path);
     HttpResponse post_json   (const std::string& path, const std::string& json_body);
@@ -62,4 +64,5 @@ private:
     HINTERNET session_ = nullptr;
     std::string base_url_;
     std::string token_;
+    std::function<void()> unauthorized_cb_;
 };

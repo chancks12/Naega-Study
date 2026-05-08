@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/videoio.hpp>
 #include <sstream>
 #include <vector>
 
@@ -50,20 +51,29 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
     fs::path event_dir = fs::path(clip_directory_) / ("event_" + std::to_string(event.timestamp_ms));
     fs::create_directories(event_dir);
 
-    // Store a JPEG sequence first. This keeps the claim-check path useful even
-    // before the MP4 encoder policy is finalized.
     std::size_t written = 0;
-    for (std::size_t i = 0; i < event.frames.size(); ++i) {
-        if (event.frames[i].mat.empty()) {
-            continue;
-        }
+    const fs::path mp4_path = event_dir / "clip.mp4";
 
-        std::ostringstream name;
-        name << "frame_" << std::setw(4) << std::setfill('0') << i << ".jpg";
-        const fs::path frame_path = event_dir / name.str();
-        const std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 90 };
-        if (cv::imwrite(frame_path.string(), event.frames[i].mat, params)) {
-            ++written;
+    const cv::Mat* first_valid = nullptr;
+    for (const auto& f : event.frames) {
+        if (!f.mat.empty()) { first_valid = &f.mat; break; }
+    }
+
+    if (first_valid) {
+        const cv::Size frame_size(first_valid->cols, first_valid->rows);
+        cv::VideoWriter writer(
+            mp4_path.string(),
+            cv::VideoWriter::fourcc('m', 'p', '4', 'v'),
+            30.0,
+            frame_size);
+
+        if (writer.isOpened()) {
+            for (const auto& f : event.frames) {
+                if (!f.mat.empty()) {
+                    writer.write(f.mat);
+                    ++written;
+                }
+            }
         }
     }
 
@@ -72,7 +82,7 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
     manifest << "{\"kind\":\"event_clip\""
              << ",\"clip_id\":\"" << escape_json(clip_id) << "\""
              << ",\"clip_access\":\"local_only\""
-             << ",\"clip_format\":\"jpeg_sequence\""
+             << ",\"clip_format\":\"mp4\""
              << ",\"timestamp_ms\":" << event.timestamp_ms
              << ",\"reason\":\"" << escape_json(event.reason) << "\""
              << ",\"confidence\":" << event.confidence
@@ -84,9 +94,9 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
 
     ClipRef ref;
     ref.clip_id = clip_id;
-    ref.uri = event_dir.string();
+    ref.uri = mp4_path.string();
     ref.access_kind = "local_only";
-    ref.format = "jpeg_sequence";
+    ref.format = "mp4";
     ref.frame_count = written;
     ref.retention_days = retention_days_;
     ref.created_at_ms = created_at;

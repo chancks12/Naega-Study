@@ -47,6 +47,12 @@ void WinHttpClient::clear_token()
     token_.clear();
 }
 
+void WinHttpClient::set_unauthorized_callback(std::function<void()> cb)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    unauthorized_cb_ = std::move(cb);
+}
+
 HttpResponse WinHttpClient::get(const std::string& path)
 {
     return send_request(L"GET", path, {}, nullptr);
@@ -258,6 +264,12 @@ HttpResponse WinHttpClient::send_request(
         WINHTTP_HEADER_NAME_BY_INDEX, &status_code, &size,
         WINHTTP_NO_HEADER_INDEX);
     resp.status_code = static_cast<int>(status_code);
+
+    if (resp.status_code == 401) {
+        std::function<void()> cb;
+        { std::lock_guard<std::mutex> lock(mtx_); cb = unauthorized_cb_; }
+        if (cb) cb();
+    }
 
     // 응답 본문 읽기
     std::ostringstream response_body;

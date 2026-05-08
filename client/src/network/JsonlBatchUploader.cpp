@@ -119,6 +119,7 @@ std::string JsonlBatchUploader::to_jsonl(const AnalysisResult& result) const
         << ",\"posture_ok\":"    << (result.posture_ok ? "true" : "false")
         << ",\"drowsy\":"        << (result.drowsy     ? "true" : "false")
         << ",\"absent\":"        << (result.absent     ? "true" : "false")
+        << ",\"confidence\":"    << result.confidence
         << "}";
     return out.str();
 }
