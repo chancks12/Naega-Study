@@ -74,6 +74,7 @@ private:
     void draw_calibration(ID2D1RenderTarget* rt, int countdown);
     void draw_stats_panel(ID2D1RenderTarget* rt);
     void draw_break_alert(ID2D1RenderTarget* rt);
+    void draw_status_badge(ID2D1RenderTarget* rt, const AnalysisResult& result);
 
     // 세션 타이머 / 토스트 / 캘리브레이션 / 통계 / 휴식알림
     std::atomic<std::uint64_t> session_start_ms_{ 0 };

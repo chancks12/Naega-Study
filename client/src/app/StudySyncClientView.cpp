@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "StudySyncClientView.h"
 #include "network/WinHttpClient.h"
+#include "resource.h"
 
 #include <chrono>
 #include <windows.h>
@@ -17,9 +18,9 @@ BEGIN_MESSAGE_MAP(CStudySyncClientView, CWnd)
     ON_WM_ERASEBKGND()
     ON_WM_SIZE()
     ON_WM_TIMER()
+    ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
 END_MESSAGE_MAP()
 
-// ── 내부 유틸 ──────────────────────────────────────────────────
 namespace {
 std::string current_iso8601()
 {
@@ -35,12 +36,12 @@ std::string current_iso8601()
 
 // ── 생성 ───────────────────────────────────────────────────────
 
-CStudySyncClientView::CStudySyncClientView()
-    : alert_manager_(alert_queue_)
-    , worker_pool_(3)
-    , transport_config_()
+CStudySyncClientView::CStudySyncClientView(ClientTransportConfig config)
+    : transport_config_(std::move(config))
     , transports_(make_client_transports(transport_config_))
     , stats_api_(WinHttpClient::instance())
+    , alert_manager_(alert_queue_)
+    , worker_pool_(3)
     , capture_thread_(render_buffer_, send_buffer_, shadow_buffer_)
     , render_thread_(render_buffer_)
     , ai_tcp_client_(send_buffer_, shadow_buffer_, event_queue_, result_buffer_, transport_config_.jpeg_quality)
@@ -66,18 +67,15 @@ void CStudySyncClientView::set_session_id(long long session_id,
     session_id_         = session_id;
     session_start_time_ = start_time;
 
-    // JSONL 로그 라인에 session_id 포함
     if (transports_.log_sink) {
         transports_.log_sink->set_session_id(session_id);
     }
 
-    // 세션 타이머 시작 (steady_clock 기준)
     session_start_steady_ms_ = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
     render_thread_.set_session_start_ms(session_start_steady_ms_);
 
-    // ── 캘리브레이션 시작 ─────────────────────────────────────────
     begin_calibration();
 }
 
@@ -87,8 +85,8 @@ void CStudySyncClientView::begin_calibration()
     {
         std::lock_guard<std::mutex> lock(calib_mtx_);
         calib_samples_.clear();
-        calibrating_  = true;
-        calib_tick_   = kCalibSec;
+        calibrating_ = true;
+        calib_tick_  = kCalibSec;
     }
     render_thread_.set_calibration_countdown(kCalibSec);
     SetTimer(IDT_CALIB, 1000, nullptr);
@@ -104,18 +102,16 @@ void CStudySyncClientView::finish_calibration()
             for (double v : calib_samples_) neck_avg += v;
             neck_avg /= static_cast<double>(calib_samples_.size());
         } else {
-            neck_avg = 25.0; // 샘플 없으면 기본값
+            neck_avg = 25.0;
         }
     }
 
-    // 기준 자세 + 여유 마진 10도를 임계값으로 설정
     constexpr double kMargin = 10.0;
     const double threshold = neck_avg + kMargin;
 
     if (transport_config_.use_dummy_ai) {
         dummy_generator_.set_neck_threshold(threshold);
     }
-    // (실제 AI 파이프라인은 AiTcpClient 내부 detector에도 동일하게 적용 필요)
 
     char dbg[128];
     snprintf(dbg, sizeof(dbg),
@@ -123,11 +119,8 @@ void CStudySyncClientView::finish_calibration()
         neck_avg, threshold, calib_samples_.size());
     OutputDebugStringA(dbg);
 
-    // 완료 메시지 표시 후 1.5초 뒤 오버레이 숨김
     render_thread_.set_calibration_countdown(0);
     SetTimer(IDT_CALIB_HIDE, 1500, nullptr);
-
-    // 분석 데이터 주기적 flush 시작 (10초마다)
     SetTimer(IDT_LOG_FLUSH, 10'000, nullptr);
 }
 
@@ -135,16 +128,11 @@ void CStudySyncClientView::finish_calibration()
 
 void CStudySyncClientView::request_server_stats()
 {
-    // Keep HTTP outside the render thread. The HUD reads only the cached snapshot.
-    if (stats_fetch_pending_.exchange(true)) {
-        return;
-    }
+    if (stats_fetch_pending_.exchange(true)) return;
 
     worker_pool_.enqueue([this] {
         const ServerStatsSnapshot::Data data = stats_api_.today();
-        if (data.valid) {
-            server_stats_.update(data);
-        }
+        if (data.valid) server_stats_.update(data);
         stats_fetch_pending_ = false;
     });
 }
@@ -153,39 +141,36 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CWnd::OnCreate(lpCreateStruct) == -1) return -1;
 
+    // ── 학습 종료 버튼 (우하단 고정) ─────────────────────────
+    font_stop_.CreateFont(
+        15, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
+
+    btn_stop_.Create(_T("학습 종료"),
+                     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT,
+                     CRect(0, 0, 120, 36), this, IDC_BTN_STOP_CAPTURE);
+    btn_stop_.SetFont(&font_stop_);
+
+    // ── 파이프라인 시작 ─────────────────────────────────────
     worker_pool_.start();
     capture_thread_.start(0, transport_config_.capture_fps);
     render_thread_.start(m_hWnd, result_buffer_);
 
-    // 토스트 버퍼 / 통계 히스토리 연결 (렌더 스레드 시작 직후)
     render_thread_.set_toast_buffer(&toast_buffer_);
     render_thread_.set_stats_history(&stats_history_);
     render_thread_.set_server_stats(&server_stats_);
-
-    // 휴식 알림 오버레이용 렌더 스레드 연결
     alert_dispatch_thread_.set_render_thread(&render_thread_);
 
     if (transport_config_.use_dummy_ai) {
-        // AI 서버 없이 더미 분석결과로 전체 파이프라인 테스트
-        // AlertManager 콜백 등록 → 자세/졸음 감지 시 toast_buffer_에 기록
         dummy_generator_.set_result_callback([this](const AnalysisResult& r) {
-            // 캘리브레이션 중: neck_angle 샘플 수집, 알림/로그 억제
             {
                 std::lock_guard<std::mutex> lock(calib_mtx_);
-                if (calibrating_) {
-                    calib_samples_.push_back(r.neck_angle);
-                    return;
-                }
+                if (calibrating_) { calib_samples_.push_back(r.neck_angle); return; }
             }
-
-            // 통계 히스토리 누적 (그래프용)
             stats_history_.push(r);
-
-            // 분석 데이터 로그 누적 (세션 활성 시에만)
-            if (session_id_ > 0 && transports_.log_sink) {
+            if (session_id_ > 0 && transports_.log_sink)
                 transports_.log_sink->append_analysis(r);
-            }
-
             alert_manager_.feed_local_analysis(r);
         });
         dummy_generator_.start(transport_config_.dummy_interval_ms);
@@ -193,18 +178,11 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
         ai_tcp_client_.set_result_callback([this](const AnalysisResult& r) {
             {
                 std::lock_guard<std::mutex> lock(calib_mtx_);
-                if (calibrating_) {
-                    calib_samples_.push_back(r.neck_angle);
-                    return;
-                }
+                if (calibrating_) { calib_samples_.push_back(r.neck_angle); return; }
             }
-
             stats_history_.push(r);
-
-            if (session_id_ > 0 && transports_.log_sink) {
+            if (session_id_ > 0 && transports_.log_sink)
                 transports_.log_sink->append_analysis(r);
-            }
-
             alert_manager_.feed_local_analysis(r);
         });
         ai_tcp_client_.start(
@@ -218,9 +196,7 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
     event_upload_thread_.start();
     alert_dispatch_thread_.start();
 
-    ai_heartbeat_.start([this] {
-        return ai_tcp_client_.is_connected();
-    });
+    ai_heartbeat_.start([this] { return ai_tcp_client_.is_connected(); });
     main_heartbeat_.start([this] {
         return transports_.log_sink && transports_.log_sink->health_check();
     });
@@ -233,40 +209,30 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 void CStudySyncClientView::OnDestroy()
 {
-    // ── 세션 종료 먼저 (스레드 종료 전에 호출) ──────────────
     if (session_id_ > 0) {
         const std::string end_time = current_iso8601();
         SessionApi session_api(WinHttpClient::instance());
         const SessionEndResult result = session_api.end(session_id_, end_time);
 
         if (result.success) {
-            // 종료 통계 디버그 출력 (추후 UI 표시 가능)
             std::ostringstream msg;
             msg << std::fixed;
             msg.precision(1);
             msg << "[StudySync] 세션 종료 — "
-                << "집중시간: "  << result.focus_min               << "분, "
-                << "평균집중도: " << result.avg_focus * 100.0f      << "%, "
-                << "목표달성: "  << (result.goal_achieved ? "Y" : "N") << "\n";
-            OutputDebugStringA(msg.str().c_str());
-        } else {
-            std::ostringstream msg;
-            msg << "[StudySync] 세션 종료 실패 (HTTP " << result.success << ") " << result.message << "\n";
+                << "집중시간: "  << result.focus_min          << "분, "
+                << "평균집중도: " << result.avg_focus * 100.0f << "%\n";
             OutputDebugStringA(msg.str().c_str());
         }
         session_id_ = 0;
     }
 
-    // ── 타이머 정리 + 마지막 분석 데이터 flush ───────────────
     KillTimer(IDT_LOG_FLUSH);
     KillTimer(IDT_CALIB);
     KillTimer(IDT_CALIB_HIDE);
     KillTimer(IDT_STATS_FETCH);
-    if (transports_.log_sink) {
-        transports_.log_sink->flush();  // 미전송 데이터 마지막으로 전송
-    }
 
-    // ── 스레드 종료 (시작 역순) ──────────────────────────────
+    if (transports_.log_sink) transports_.log_sink->flush();
+
     clip_garbage_collector_.stop();
     main_heartbeat_.stop();
     ai_heartbeat_.stop();
@@ -294,6 +260,23 @@ BOOL CStudySyncClientView::OnEraseBkgnd(CDC* /*pDC*/)
     return TRUE;
 }
 
+void CStudySyncClientView::OnSize(UINT nType, int cx, int cy)
+{
+    CWnd::OnSize(nType, cx, cy);
+
+    // 학습 종료 버튼: 우하단 고정
+    if (btn_stop_.GetSafeHwnd() && cx > 0 && cy > 0) {
+        constexpr int bw = 120, bh = 36, margin = 16;
+        btn_stop_.SetWindowPos(nullptr,
+                               cx - bw - margin, cy - bh - margin,
+                               bw, bh, SWP_NOZORDER);
+    }
+
+    if (cx > 0 && cy > 0) {
+        render_thread_.notify_resize(static_cast<UINT>(cx), static_cast<UINT>(cy));
+    }
+}
+
 void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
 {
     if (nIDEvent == IDT_CALIB) {
@@ -303,7 +286,6 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
             --calib_tick_;
             remaining = calib_tick_;
         }
-
         if (remaining > 0) {
             render_thread_.set_calibration_countdown(remaining);
         } else {
@@ -312,13 +294,10 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
         }
     } else if (nIDEvent == IDT_CALIB_HIDE) {
         KillTimer(IDT_CALIB_HIDE);
-        render_thread_.set_calibration_countdown(-1);  // 오버레이 숨김, 세션 시작
-
+        render_thread_.set_calibration_countdown(-1);
     } else if (nIDEvent == IDT_LOG_FLUSH) {
-        // 10초마다 누적된 분석 데이터를 서버로 전송
-        if (transports_.log_sink && session_id_ > 0) {
+        if (transports_.log_sink && session_id_ > 0)
             transports_.log_sink->flush();
-        }
     } else if (nIDEvent == IDT_STATS_FETCH) {
         request_server_stats();
     }
@@ -326,10 +305,7 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
     CWnd::OnTimer(nIDEvent);
 }
 
-void CStudySyncClientView::OnSize(UINT nType, int cx, int cy)
+void CStudySyncClientView::OnBnClickedStop()
 {
-    CWnd::OnSize(nType, cx, cy);
-    if (cx > 0 && cy > 0) {
-        render_thread_.notify_resize(static_cast<UINT>(cx), static_cast<UINT>(cy));
-    }
+    if (stop_cb_) stop_cb_();
 }

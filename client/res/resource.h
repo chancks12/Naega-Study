@@ -32,6 +32,12 @@
 #define IDC_BTN_WRONG            1024
 #define IDC_STATIC_FEEDBACK_DONE 1025
 
+// ── 메인 네비게이션 ────────────────────────────────────────────
+#define IDC_TAB_MAIN            300
+#define IDC_BTN_START_CAPTURE   301
+#define IDC_BTN_STOP_CAPTURE    302
+#define IDC_BTN_LOGOUT          303
+
 #ifndef IDC_STATIC
 #define IDC_STATIC -1
 #endif

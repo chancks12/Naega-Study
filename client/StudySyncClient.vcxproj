@@ -57,6 +57,10 @@
   <ItemGroup>
     <ClInclude Include="include\analysis\DummyAnalysisGenerator.h" />
     <ClInclude Include="include\analysis\IPoseAnalyzer.h" />
+    <ClInclude Include="src\app\ClipsPanel.h" />
+    <ClInclude Include="src\app\HomePanel.h" />
+    <ClInclude Include="src\app\SettingsPanel.h" />
+    <ClInclude Include="src\app\StatsPanel.h" />
     <ClInclude Include="include\analysis\LocalMediaPipePoseAnalyzer.h" />
     <ClInclude Include="include\analysis\ZmqPoseAnalyzer.h" />
     <ClInclude Include="include\alert\AlertDispatchThread.h" />
@@ -118,6 +122,10 @@
   <ItemGroup>
     <ClCompile Include="src\analysis\DummyAnalysisGenerator.cpp" />
     <ClCompile Include="src\analysis\LocalMediaPipePoseAnalyzer.cpp" />
+    <ClCompile Include="src\app\ClipsPanel.cpp" />
+    <ClCompile Include="src\app\HomePanel.cpp" />
+    <ClCompile Include="src\app\SettingsPanel.cpp" />
+    <ClCompile Include="src\app\StatsPanel.cpp" />
     <ClCompile Include="src\analysis\ZmqPoseAnalyzer.cpp" />
     <ClCompile Include="src\alert\AlertDispatchThread.cpp" />
     <ClCompile Include="src\alert\AlertManager.cpp" />

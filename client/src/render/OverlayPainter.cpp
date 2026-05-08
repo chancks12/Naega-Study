@@ -225,10 +225,13 @@ void OverlayPainter::draw(ID2D1RenderTarget* rt, const AnalysisResult& result)
         }
     }
 
-    // ── 우상단: 분석 수치 패널 ─────────────────────────────────
+    // ── 우상단: 상태 뱃지 (단순 3-클래스 표시) ───────────────────
+    draw_status_badge(rt, result);
+
+    // ── 우상단: 분석 수치 패널 (뱃지 아래) ─────────────────────
     const D2D1_SIZE_F size = rt->GetSize();
     const float px = size.width - kPanelW - kPanelMargin;
-    const float py = kPanelMargin;
+    const float py = kPanelMargin + 48.0f;  // 뱃지 높이(40) + 간격(8)
     const D2D1_RECT_F panel = D2D1::RectF(px, py, px + kPanelW, py + kPanelH);
 
     draw_panel_bg(rt, panel);
@@ -624,4 +627,48 @@ void OverlayPainter::draw_toast(ID2D1RenderTarget* rt, float x, float y, const s
     } else {
         draw_text(rt, wtext, x + 30.0f, y + 14.0f, kW - 40.0f, 20.0f, fmt_value_.Get(), brush_white_.Get());
     }
+}
+
+// ── 우상단 상태 뱃지: 모서리 둥근 가로 박스 + 색 원 + 한글 상태 텍스트 ──
+
+void OverlayPainter::draw_status_badge(ID2D1RenderTarget* rt, const AnalysisResult& result)
+{
+    const D2D1_SIZE_F size = rt->GetSize();
+    constexpr float kBW = 215.0f, kBH = 40.0f, kR = 8.0f;
+    const float bx = size.width - kBW - kPanelMargin;
+    const float by = kPanelMargin;
+
+    // 배경 rounded rect
+    const D2D1_RECT_F bg = D2D1::RectF(bx, by, bx + kBW, by + kBH);
+    rt->FillRoundedRectangle(D2D1::RoundedRect(bg, kR, kR), brush_bg_.Get());
+    rt->DrawRoundedRectangle(D2D1::RoundedRect(bg, kR, kR), brush_gray_.Get(), 0.8f);
+
+    // 상태 색상 및 한글 라벨 결정
+    ID2D1SolidColorBrush* circle_brush = brush_gray_.Get();
+    const wchar_t* label = L"대기 중";
+
+    if (result.absent) {
+        circle_brush = brush_red_.Get();
+        label = L"다른 행동 중";
+    } else if (result.drowsy || result.state == "drowsy") {
+        circle_brush = brush_orange_.Get();
+        label = L"졸음";
+    } else if (result.state == "distracted") {
+        circle_brush = brush_yellow_.Get();
+        label = L"다른 행동 중";
+    } else if (result.state == "focus") {
+        circle_brush = brush_green_.Get();
+        label = L"공부 중";
+    }
+
+    // 색 원
+    const float cx = bx + 20.0f;
+    const float cy = by + kBH / 2.0f;
+    draw_dot(rt, cx, cy, 8.0f, circle_brush);
+
+    // 상태 텍스트
+    draw_text(rt, label,
+              cx + 16.0f, by + 2.0f,
+              kBW - 44.0f, kBH - 4.0f,
+              fmt_value_.Get(), brush_white_.Get());
 }
