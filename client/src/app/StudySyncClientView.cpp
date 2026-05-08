@@ -18,7 +18,6 @@ BEGIN_MESSAGE_MAP(CStudySyncClientView, CWnd)
     ON_WM_ERASEBKGND()
     ON_WM_SIZE()
     ON_WM_TIMER()
-    ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
 END_MESSAGE_MAP()
 
 namespace {
@@ -119,6 +118,13 @@ void CStudySyncClientView::finish_calibration()
         neck_avg, threshold, calib_samples_.size());
     OutputDebugStringA(dbg);
 
+    // 캘리브레이션 완료 → 기본 상태 "공부 중"으로 초기화 (AI 응답 전까지 표시)
+    AnalysisResult default_result;
+    default_result.state        = "focus";
+    default_result.posture_ok   = true;
+    default_result.face_detected = 1;
+    result_buffer_.update(default_result);
+
     render_thread_.set_calibration_countdown(0);
     SetTimer(IDT_CALIB_HIDE, 1500, nullptr);
     SetTimer(IDT_LOG_FLUSH, 10'000, nullptr);
@@ -140,17 +146,6 @@ void CStudySyncClientView::request_server_stats()
 int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CWnd::OnCreate(lpCreateStruct) == -1) return -1;
-
-    // ── 학습 종료 버튼 (우하단 고정) ─────────────────────────
-    font_stop_.CreateFont(
-        15, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
-
-    btn_stop_.Create(_T("학습 종료"),
-                     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT,
-                     CRect(0, 0, 120, 36), this, IDC_BTN_STOP_CAPTURE);
-    btn_stop_.SetFont(&font_stop_);
 
     // ── 파이프라인 시작 ─────────────────────────────────────
     worker_pool_.start();
@@ -264,14 +259,6 @@ void CStudySyncClientView::OnSize(UINT nType, int cx, int cy)
 {
     CWnd::OnSize(nType, cx, cy);
 
-    // 학습 종료 버튼: 우하단 고정
-    if (btn_stop_.GetSafeHwnd() && cx > 0 && cy > 0) {
-        constexpr int bw = 120, bh = 36, margin = 16;
-        btn_stop_.SetWindowPos(nullptr,
-                               cx - bw - margin, cy - bh - margin,
-                               bw, bh, SWP_NOZORDER);
-    }
-
     if (cx > 0 && cy > 0) {
         render_thread_.notify_resize(static_cast<UINT>(cx), static_cast<UINT>(cy));
     }
@@ -305,7 +292,3 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
     CWnd::OnTimer(nIDEvent);
 }
 
-void CStudySyncClientView::OnBnClickedStop()
-{
-    if (stop_cb_) stop_cb_();
-}

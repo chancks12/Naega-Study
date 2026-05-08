@@ -22,6 +22,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_WM_CLOSE()
     ON_WM_SIZE()
     ON_NOTIFY(TCN_SELCHANGE, IDC_TAB_MAIN, OnTabSelChange)
+    ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
 END_MESSAGE_MAP()
 
 static constexpr int kTabH = 28;
@@ -120,6 +121,13 @@ void CMainFrame::layout_content(int cx, int cy)
     if (capturing_ && capture_view_ && capture_view_->GetSafeHwnd()) {
         capture_view_->SetWindowPos(nullptr, 0, 0, cx, cy,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
+
+        constexpr int bw = 120, bh = 36, margin = 16;
+        if (btn_stop_.GetSafeHwnd()) {
+            btn_stop_.SetWindowPos(&CWnd::wndTop,
+                                   cx - bw - margin, cy - bh - margin,
+                                   bw, bh, SWP_NOACTIVATE);
+        }
         return;
     }
 
@@ -177,7 +185,18 @@ void CMainFrame::start_capture()
                           WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                           rc, this, AFX_IDW_PANE_FIRST);
 
-    capture_view_->set_stop_callback([this] { stop_capture(); });
+    // 학습 종료 버튼 — D2D 위에 표시되도록 CMainFrame 자식으로 생성
+    font_stop_.CreateFont(
+        15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
+
+    constexpr int bw = 120, bh = 36, margin = 16;
+    btn_stop_.Create(_T("학습 종료"),
+                     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT | WS_CLIPSIBLINGS,
+                     CRect(rc.Width() - bw - margin, rc.Height() - bh - margin, rc.Width() - margin, rc.Height() - margin),
+                     this, IDC_BTN_STOP_CAPTURE);
+    btn_stop_.SetFont(&font_stop_);
 
     if (result.success && result.session_id > 0) {
         capture_view_->set_session_id(result.session_id, iso);
@@ -203,6 +222,12 @@ void CMainFrame::stop_capture()
         }
     }
 
+    // 학습 종료 버튼 제거
+    if (btn_stop_.GetSafeHwnd()) {
+        btn_stop_.DestroyWindow();
+        font_stop_.DeleteObject();
+    }
+
     // 캡처 뷰 종료 (OnDestroy → 세션 종료 API + 스레드 정리)
     capture_view_->DestroyWindow();
     delete capture_view_;
@@ -216,6 +241,13 @@ void CMainFrame::stop_capture()
     CRect rc;
     GetClientRect(&rc);
     layout_content(rc.Width(), rc.Height());
+}
+
+// ── 버튼 핸들러 ─────────────────────────────────────────────
+
+void CMainFrame::OnBnClickedStop()
+{
+    stop_capture();
 }
 
 // ── 종료 ────────────────────────────────────────────────────

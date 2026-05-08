@@ -49,7 +49,6 @@ protected:
     afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnTimer(UINT_PTR nIDEvent);
-    afx_msg void OnBnClickedStop();
     DECLARE_MESSAGE_MAP()
 
     static constexpr UINT_PTR IDT_CALIB       = 1;
@@ -100,6 +99,4 @@ private:
     LocalClipGarbageCollector clip_garbage_collector_;
 
     std::function<void()> stop_cb_;
-    CFont   font_stop_;
-    CButton btn_stop_;
 };
