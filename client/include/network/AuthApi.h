@@ -9,6 +9,7 @@ public:
 
     AuthResponse login(const LoginRequest& req);
     AuthResponse register_user(const RegisterRequest& req);
+    bool         logout();
 
 private:
     static std::string escape_json(const std::string& value);

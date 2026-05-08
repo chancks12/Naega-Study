@@ -19,6 +19,13 @@ AuthResponse AuthApi::login(const LoginRequest& req)
     return parse_auth_response(resp);
 }
 
+bool AuthApi::logout()
+{
+    // POST /auth/logout — body 없음, Authorization 헤더는 WinHttpClient가 자동 주입
+    const HttpResponse resp = http_.post_json("/auth/logout", "{}");
+    return resp.ok();
+}
+
 AuthResponse AuthApi::register_user(const RegisterRequest& req)
 {
     std::ostringstream body;

@@ -2,6 +2,7 @@
 #include "SettingsPanel.h"
 #include "MainFrm.h"
 #include "resource.h"
+#include "network/AuthApi.h"
 #include "network/TokenStore.h"
 #include "network/WinHttpClient.h"
 
@@ -76,6 +77,7 @@ void CSettingsPanel::OnSize(UINT, int cx, int cy)
 void CSettingsPanel::OnBnClickedLogout()
 {
     // 토큰 삭제 후 앱 종료 (재실행 시 로그인 화면)
+    AuthApi(WinHttpClient::instance()).logout();
     TokenStore{}.clear();
     WinHttpClient::instance().clear_token();
     GetParentFrame()->PostMessage(WM_CLOSE);
