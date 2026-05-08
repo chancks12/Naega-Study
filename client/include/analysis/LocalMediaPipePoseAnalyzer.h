@@ -2,18 +2,20 @@
 
 #include "analysis/IPoseAnalyzer.h"
 
+#include <onnxruntime_cxx_api.h>
 #include <opencv2/objdetect.hpp>
-#include <opencv2/imgproc.hpp>
+#include <memory>
+#include <vector>
 
-// OpenCV Haar-cascade 기반 keypoint 추출기.
-// MediaPipe C++ SDK 의존성이 확정되면 이 구현을 MediaPipe Pose Landmarker로 교체한다.
+// MediaPipe Pose + Face Mesh 기반 keypoint 추출기.
+// ONNX Runtime으로 pose_landmark.onnx, face_landmark.onnx를 직접 실행한다.
 //
 // 추출 항목:
-//   ear          - Eye Aspect Ratio (눈 감김 정도)
-//   neck_angle   - 고개 수직 기울기 추정치
-//   shoulder_diff- 좌우 어깨 높이 차 추정치 (픽셀)
-//   head_yaw     - 좌우 회전 추정치 (도)
-//   head_pitch   - 앞뒤 기울기 추정치 (도)
+//   ear          - Eye Aspect Ratio (468 face landmark 기반)
+//   neck_angle   - 귀~어깨 수직각 (pose landmark 7,8,11,12)
+//   shoulder_diff- 어깨 y좌표 차이 (pose landmark 11,12)
+//   head_yaw     - 좌우 회전 (solvePnP)
+//   head_pitch   - 앞뒤 기울기 (solvePnP)
 //   face_detected- 얼굴 감지 여부
 
 class LocalMediaPipePoseAnalyzer final : public IPoseAnalyzer {
@@ -23,13 +25,23 @@ public:
     void shutdown() override;
 
 private:
-    // Target MediaPipe feature contract:
-    // Pose: neck_angle, shoulder_diff.
-    // Face Mesh: ear, head_yaw, head_pitch, face_detected.
-    // Phone detection is intentionally excluded from the client feature set.
-    double detect_ear(const cv::Mat& gray, const cv::Rect& face_rect);
+    double compute_ear(const std::vector<float>& lm468) const;
+    void   compute_head_pose(const std::vector<float>& lm468,
+                             int crop_w, int crop_h,
+                             double& yaw, double& pitch) const;
+    double compute_neck_angle(const std::vector<float>& lm195,
+                              int frame_w, int frame_h) const;
+    double compute_shoulder_diff(const std::vector<float>& lm195,
+                                 int frame_h) const;
 
+    // OrtEnv는 Session보다 먼저 생성되고 나중에 소멸되어야 한다
+    Ort::Env            ort_env_{ ORT_LOGGING_LEVEL_WARNING, "StudySync" };
+    Ort::SessionOptions ort_opts_;
+    std::unique_ptr<Ort::Session> face_session_;
+    std::unique_ptr<Ort::Session> pose_session_;
+
+    // 얼굴 위치 감지 (Haar cascade) → crop 영역 계산용
     cv::CascadeClassifier face_cascade_;
-    cv::CascadeClassifier eye_cascade_;
+
     bool initialized_ = false;
 };

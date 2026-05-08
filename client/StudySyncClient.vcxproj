@@ -164,4 +164,17 @@
     <None Include="CMakeLists.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\build\native\Microsoft.ML.OnnxRuntime.targets"
+          Condition="Exists('$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\build\native\Microsoft.ML.OnnxRuntime.targets')" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>NuGet 패키지 Microsoft.ML.OnnxRuntime 1.18.1 이 없습니다. 솔루션에서 NuGet 복원을 실행하세요.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\build\native\Microsoft.ML.OnnxRuntime.targets')" Text="$(ErrorText)" />
+  </Target>
+  <ItemDefinitionGroup>
+    <PostBuildEvent>
+      <Command>xcopy /Y /I /E "$(ProjectDir)models" "$(OutDir)models" &gt; nul 2&gt;&amp;1</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
 </Project>
