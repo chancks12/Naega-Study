@@ -174,7 +174,8 @@
   </Target>
   <ItemDefinitionGroup>
     <PostBuildEvent>
-      <Command>if exist "$(ProjectDir)models\" ( xcopy /Y /I /E "$(ProjectDir)models\*" "$(OutDir)models\" )</Command>
+      <Command>if exist "$(ProjectDir)models\" ( xcopy /Y /I /E "$(ProjectDir)models\*" "$(OutDir)models\" )
+xcopy /Y "$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native\onnxruntime.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>
