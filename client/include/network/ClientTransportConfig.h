@@ -14,8 +14,8 @@ struct ClientTransportConfig {
     std::string main_server_url = "http://10.10.10.130:8081";
 
     // AI server uses TCP for frame upload and analysis responses.
-    std::string ai_server_host = "10.10.10.50";
-    std::uint16_t ai_server_port = 9100;
+    std::string ai_server_host = "10.10.10.98";
+    std::uint16_t ai_server_port = 9500;
 
     std::string clip_directory = "event_clips";
 
