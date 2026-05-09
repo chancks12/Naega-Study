@@ -48,12 +48,13 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
-    <!-- MFC atlmfc 경로 자동 감지 (VS 2026/v18 대응) -->
+    <!-- MFC atlmfc 경로 자동 감지: VCToolsInstallDir 우선, 없으면 14.44 폴백 (VS 2026/v18) -->
     <AtlMfcIncDir Condition="'$(AtlMfcIncDir)'=='' and Exists('$(VCToolsInstallDir)atlmfc\include')">$(VCToolsInstallDir)atlmfc\include</AtlMfcIncDir>
-    <AtlMfcIncDir Condition="'$(AtlMfcIncDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\include')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\include</AtlMfcIncDir>
-    <AtlMfcIncDir Condition="'$(AtlMfcIncDir)'=='' and Exists('C:\Program Files (x86)\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\include')">C:\Program Files (x86)\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\include</AtlMfcIncDir>
+    <AtlMfcIncDir Condition="'$(AtlMfcIncDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\atlmfc\include')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\atlmfc\include</AtlMfcIncDir>
+    <AtlMfcIncDir Condition="'$(AtlMfcIncDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.42.34433\atlmfc\include')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.42.34433\atlmfc\include</AtlMfcIncDir>
     <AtlMfcLibDir Condition="'$(AtlMfcLibDir)'=='' and Exists('$(VCToolsInstallDir)atlmfc\lib\x64')">$(VCToolsInstallDir)atlmfc\lib\x64</AtlMfcLibDir>
-    <AtlMfcLibDir Condition="'$(AtlMfcLibDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\lib\x64')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\$(VCToolsVersion)\atlmfc\lib\x64</AtlMfcLibDir>
+    <AtlMfcLibDir Condition="'$(AtlMfcLibDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\atlmfc\lib\x64')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\atlmfc\lib\x64</AtlMfcLibDir>
+    <AtlMfcLibDir Condition="'$(AtlMfcLibDir)'=='' and Exists('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.42.34433\atlmfc\lib\x64')">C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.42.34433\atlmfc\lib\x64</AtlMfcLibDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
