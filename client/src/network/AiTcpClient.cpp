@@ -232,7 +232,6 @@ bool AiTcpClient::recv_result_packet(SOCKET socket, AnalysisResult& out)
     out.focus_score   = static_cast<int>(extract_number(json, "focus_score"));
     out.confidence    = extract_number(json, "confidence", 1.0);
     out.state         = extract_string(json, "state");
-    out.guide         = extract_string(json, "guide");
     out.posture_ok    = extract_bool(json, "posture_ok", true);
     out.drowsy        = extract_bool(json, "is_drowsy") || extract_bool(json, "drowsy");
     out.absent        = extract_bool(json, "is_absent")  || extract_bool(json, "absent");

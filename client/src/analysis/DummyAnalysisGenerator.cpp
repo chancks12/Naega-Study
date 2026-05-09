@@ -108,7 +108,6 @@ AnalysisResult make_result(int tick)
     }
 
     r.confidence = 1.0;  // 더미: 신뢰도 최대값
-    r.guide = r.posture_ok ? "" : "Please sit up straight";
     return r;
 }
 

@@ -212,7 +212,6 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             80.0 - std::abs(result.head_yaw) * 0.4 - std::abs(result.head_pitch) * 0.3);
     }
     result.focus_score = std::clamp(result.focus_score, 0, 100);
-    result.guide       = result.posture_ok ? "" : "Please sit up straight";
 
     return result;
 }

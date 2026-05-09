@@ -28,7 +28,6 @@ struct AnalysisResult {
     bool   drowsy      = false;
     bool   absent      = false;
     std::string state;
-    std::string guide;
 
     std::vector<Landmark2D> landmarks;
 };
