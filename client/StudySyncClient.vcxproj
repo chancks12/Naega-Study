@@ -29,6 +29,11 @@
     <OpenCVLibDir Condition="'$(OpenCVLibDir)'==''">$(OpenCVRoot)\x64\vc16\lib</OpenCVLibDir>
     <OpenCVWorldLib Condition="'$(Configuration)'=='Debug'">opencv_world4120d.lib</OpenCVWorldLib>
     <OpenCVWorldLib Condition="'$(Configuration)'!='Debug'">opencv_world4120.lib</OpenCVWorldLib>
+    <OpenCVWorldDll Condition="'$(Configuration)'=='Debug'">opencv_world4120d.dll</OpenCVWorldDll>
+    <OpenCVWorldDll Condition="'$(Configuration)'!='Debug'">opencv_world4120.dll</OpenCVWorldDll>
+    <!-- vc17 bin 우선, 없으면 vc16 bin -->
+    <OpenCVBinDir Condition="'$(OpenCVBinDir)'=='' and Exists('$(OpenCVRoot)\x64\vc17\bin')">$(OpenCVRoot)\x64\vc17\bin</OpenCVBinDir>
+    <OpenCVBinDir Condition="'$(OpenCVBinDir)'==''">$(OpenCVRoot)\x64\vc16\bin</OpenCVBinDir>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -189,7 +194,8 @@
   <ItemDefinitionGroup>
     <PostBuildEvent>
       <Command>if exist "$(ProjectDir)models\" ( xcopy /Y /I /E "$(ProjectDir)models\*" "$(OutDir)models\" )
-xcopy /Y "$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native\onnxruntime.dll" "$(OutDir)"</Command>
+xcopy /Y "$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native\onnxruntime.dll" "$(OutDir)"
+xcopy /Y "$(OpenCVBinDir)\$(OpenCVWorldDll)" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>
