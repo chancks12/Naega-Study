@@ -55,11 +55,10 @@ void EventUploadThread::upload_event(const PostureEvent& event)
     // 복기 화면 저장소에 추가 (set_review_store가 호출된 경우에만)
     if (review_store_) {
         ReviewEvent re;
-        re.event_id    = event.event_id;
+        re.event_id     = event.event_id;
         re.timestamp_ms = event.timestamp_ms;
-        re.type        = event.type;
-        re.confidence  = event.confidence;
-        re.clip_dir    = clip_ref.uri;
+        re.type         = event.type;
+        re.clip_dir     = clip_ref.uri;
         re.feedback    = ReviewEvent::Feedback::None;
         review_store_->push(re);
     }

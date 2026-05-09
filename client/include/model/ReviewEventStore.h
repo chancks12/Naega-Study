@@ -16,12 +16,11 @@ public:
         events_.push_back(evt);
     }
 
-    // 정렬된 복사본 반환: priority 오름차순 → timestamp 오름차순
+    // 정렬된 복사본 반환: timestamp 오름차순
     std::vector<ReviewEvent> sorted_events() const {
         std::lock_guard<std::mutex> lock(mtx_);
         std::vector<ReviewEvent> copy = events_;
         std::sort(copy.begin(), copy.end(), [](const ReviewEvent& a, const ReviewEvent& b) {
-            if (a.priority() != b.priority()) return a.priority() < b.priority();
             return a.timestamp_ms < b.timestamp_ms;
         });
         return copy;
@@ -38,14 +37,9 @@ public:
         }
     }
 
-    // 피드백이 필요한 이벤트 수 (confidence < 0.85)
-    int count_uncertain() const {
+    int count() const {
         std::lock_guard<std::mutex> lock(mtx_);
-        int n = 0;
-        for (const auto& e : events_) {
-            if (e.needs_feedback()) ++n;
-        }
-        return n;
+        return static_cast<int>(events_.size());
     }
 
     void reset() {

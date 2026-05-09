@@ -217,7 +217,7 @@ void CMainFrame::stop_capture()
     // 복기 이벤트 확인 (뷰 종료 전에)
     {
         ReviewEventStore& store = capture_view_->review_store();
-        if (store.count_uncertain() > 0) {
+        if (store.count() > 0) {
             ReviewDlg dlg(store, capture_view_->session_id(), this);
             dlg.DoModal();
         }
