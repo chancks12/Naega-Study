@@ -21,7 +21,6 @@ public:
 private:
     void run();
     void show_popup(const Alert& alert);
-    void send_to_arduino(const Alert& alert);
 
     AlertQueue&   alert_queue_;
     ToastBuffer&  toast_buffer_;

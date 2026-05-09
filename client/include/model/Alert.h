@@ -12,9 +12,7 @@ enum class AlertType {
 };
 
 enum class AlertTarget {
-    Popup,
-    Arduino,
-    Both
+    Popup
 };
 
 struct Alert {

@@ -49,14 +49,14 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>src\app;include;res;$(OpenCVRoot)\include;$(ZMQ_DIR)\include;$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src\app;include;res;$(OpenCVRoot)\include;$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(OpenCVLibDir);$(ZMQ_DIR)\lib;$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OpenCVLibDir);$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>$(OpenCVWorldLib);d2d1.lib;dxgi.lib;winhttp.lib;onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -68,7 +68,6 @@
     <ClInclude Include="src\app\SettingsPanel.h" />
     <ClInclude Include="src\app\StatsPanel.h" />
     <ClInclude Include="include\analysis\LocalMediaPipePoseAnalyzer.h" />
-    <ClInclude Include="include\analysis\ZmqPoseAnalyzer.h" />
     <ClInclude Include="include\alert\AlertDispatchThread.h" />
     <ClInclude Include="include\alert\AlertManager.h" />
     <ClInclude Include="include\alert\AlertQueue.h" />
@@ -110,9 +109,6 @@
     <ClInclude Include="include\network\StatsApi.h" />
     <ClInclude Include="include\network\TokenStore.h" />
     <ClInclude Include="include\network\WinHttpClient.h" />
-    <ClInclude Include="include\network\ZmqFrameSender.h" />
-    <ClInclude Include="include\network\ZmqRecvThread.h" />
-    <ClInclude Include="include\network\ZmqSendThread.h" />
     <ClInclude Include="include\render\D2DRenderer.h" />
     <ClInclude Include="include\render\OverlayPainter.h" />
     <ClInclude Include="include\render\RenderThread.h" />
@@ -132,7 +128,6 @@
     <ClCompile Include="src\app\HomePanel.cpp" />
     <ClCompile Include="src\app\SettingsPanel.cpp" />
     <ClCompile Include="src\app\StatsPanel.cpp" />
-    <ClCompile Include="src\analysis\ZmqPoseAnalyzer.cpp" />
     <ClCompile Include="src\alert\AlertDispatchThread.cpp" />
     <ClCompile Include="src\alert\AlertManager.cpp" />
     <ClCompile Include="src\app\LoginDlg.cpp" />
@@ -150,8 +145,6 @@
     <ClCompile Include="src\event\PostureEventDetector.cpp" />
     <ClCompile Include="src\network\AiTcpClient.cpp" />
     <ClCompile Include="src\network\ConnectionState.cpp" />
-    <ClCompile Include="src\network\ZmqRecvThread.cpp" />
-    <ClCompile Include="src\network\ZmqSendThread.cpp" />
     <ClCompile Include="src\network\ConsentStore.cpp" />
     <ClCompile Include="src\network\FeedbackApi.cpp" />
     <ClCompile Include="src\network\EventUploadThread.cpp" />
@@ -168,7 +161,6 @@
     <ClCompile Include="src\network\StatsApi.cpp" />
     <ClCompile Include="src\network\TokenStore.cpp" />
     <ClCompile Include="src\network\WinHttpClient.cpp" />
-    <ClCompile Include="src\network\ZmqFrameSender.cpp" />
     <ClCompile Include="src\render\D2DRenderer.cpp" />
     <ClCompile Include="src\render\OverlayPainter.cpp" />
     <ClCompile Include="src\render\RenderThread.cpp" />

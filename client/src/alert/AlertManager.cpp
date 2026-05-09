@@ -14,12 +14,12 @@ void AlertManager::feed_local_analysis(const AnalysisResult& result)
 
     if (bad_posture_streak_ >= 5 && !posture_alert_cooldown_) {
         posture_alert_cooldown_ = true;
-        push_alert(AlertType::BadPosture, AlertTarget::Both, result.timestamp_ms, "Posture warning", "Please correct your posture.");
+        push_alert(AlertType::BadPosture, AlertTarget::Popup, result.timestamp_ms, "Posture warning", "Please correct your posture.");
     }
 
     if (drowsy_streak_ >= 5 && !drowsy_alert_cooldown_) {
         drowsy_alert_cooldown_ = true;
-        push_alert(AlertType::Drowsy, AlertTarget::Both, result.timestamp_ms, "Drowsy warning", "Please take a short stretch break.");
+        push_alert(AlertType::Drowsy, AlertTarget::Popup, result.timestamp_ms, "Drowsy warning", "Please take a short stretch break.");
     }
 
     if (bad_posture_streak_ == 0) {

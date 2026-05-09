@@ -49,13 +49,7 @@ void AlertDispatchThread::run()
             continue;
         }
 
-        if (alert.target == AlertTarget::Popup || alert.target == AlertTarget::Both) {
-            show_popup(alert);
-        }
-
-        if (alert.target == AlertTarget::Arduino || alert.target == AlertTarget::Both) {
-            send_to_arduino(alert);
-        }
+        show_popup(alert);
     }
 }
 
@@ -74,9 +68,4 @@ void AlertDispatchThread::show_popup(const Alert& alert)
     }
 }
 
-void AlertDispatchThread::send_to_arduino(const Alert& alert)
-{
-    (void)alert;
-    // TODO: send a compact command over serial, e.g. posture_warn or stretch.
-}
 
