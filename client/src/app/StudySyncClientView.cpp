@@ -285,8 +285,10 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
         KillTimer(IDT_CALIB_HIDE);
         render_thread_.set_calibration_countdown(-1);
     } else if (nIDEvent == IDT_LOG_FLUSH) {
-        if (transports_.log_sink && session_id_ > 0)
-            transports_.log_sink->flush();
+        if (transports_.log_sink && session_id_ > 0) {
+            auto* sink = transports_.log_sink.get();
+            worker_pool_.enqueue([sink] { sink->flush(); });
+        }
     } else if (nIDEvent == IDT_STATS_FETCH) {
         request_server_stats();
     }
