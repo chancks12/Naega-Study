@@ -206,19 +206,21 @@ void CStudySyncClientView::OnDestroy()
 {
     if (session_id_ > 0) {
         const std::string end_time = current_iso8601();
-        SessionApi session_api(WinHttpClient::instance());
-        const SessionEndResult result = session_api.end(session_id_, end_time);
-
-        if (result.success) {
-            std::ostringstream msg;
-            msg << std::fixed;
-            msg.precision(1);
-            msg << "[StudySync] 세션 종료 — "
-                << "집중시간: "  << result.focus_min          << "분, "
-                << "평균집중도: " << result.avg_focus * 100.0f << "%\n";
-            OutputDebugStringA(msg.str().c_str());
-        }
+        const long long sid = session_id_;
         session_id_ = 0;
+        std::thread([sid, end_time]() {
+            SessionApi session_api(WinHttpClient::instance());
+            const SessionEndResult result = session_api.end(sid, end_time);
+            if (result.success) {
+                std::ostringstream msg;
+                msg << std::fixed;
+                msg.precision(1);
+                msg << "[StudySync] 세션 종료 — "
+                    << "집중시간: "   << result.focus_min          << "분, "
+                    << "평균집중도: " << result.avg_focus * 100.0f << "%\n";
+                OutputDebugStringA(msg.str().c_str());
+            }
+        }).detach();
     }
 
     KillTimer(IDT_LOG_FLUSH);
