@@ -47,7 +47,7 @@ CStudySyncClientView::CStudySyncClientView(ClientTransportConfig config)
     , dummy_generator_(result_buffer_, shadow_buffer_, event_queue_)
     , event_upload_thread_(event_queue_, *transports_.clip_store, *transports_.log_sink)
     , alert_dispatch_thread_(alert_queue_, toast_buffer_)
-    , ai_heartbeat_("AI Server",    transport_config_.ai_server_host + ":9100")
+    , ai_heartbeat_("AI Server",    transport_config_.ai_server_host + ":9500")
     , main_heartbeat_("Main Server", transport_config_.main_server_url)
     , clip_garbage_collector_(transport_config_.clip_directory,
                               transport_config_.local_clip_retention_days)
