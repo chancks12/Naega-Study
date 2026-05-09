@@ -16,22 +16,24 @@
 #include <vector>
 #include <winsock2.h>
 
-// AI 서버 TCP 클라이언트 (배치 전송 모드)
+// AI 서버 TCP 클라이언트 (Stage 1 변경 후)
+//
+// 변경 전: JPEG 이미지(~100KB) → AI 서버 (5fps 한계)
+// 변경 후: keypoint JSON (~100B) → AI 서버 (30fps 가능)
 //
 // 흐름:
 //   CaptureThread → send_buffer_
-//     → LocalMediaPipePoseAnalyzer (로컬 keypoint 추출, 매 sample_interval 프레임)
-//       → 로컬 keypoint 즉시 AlertManager 반영 (서버 응답 불필요)
-//       → 5초(kBatchIntervalMs)마다 keypoint 배치를 AI 서버로 전송
-//         → 응답 수신: state / focus_score 갱신
-//         → 응답 없음: 이전 state 유지, kMaxConsecutiveFailures 초과 시 재접속
+//     → LocalMediaPipePoseAnalyzer (클라이언트 로컬 keypoint 추출)
+//       → send_keypoint_packet() (JSON only, 바이너리 없음)
+//         → AI 서버 (TCN 시계열 분석)
+//           → recv_result_packet() (state / confidence / focus_score)
 class AiTcpClient {
 public:
     AiTcpClient(CaptureThread::SendFrameBuffer& send_buffer,
                 EventShadowBuffer& shadow_buffer,
                 EventQueue& event_queue,
                 AnalysisResultBuffer& result_buffer,
-                int /* jpeg_quality — 미사용 */);
+                int /* jpeg_quality — Stage 1 이후 미사용 */);
     ~AiTcpClient();
 
     void start(const std::string& host, std::uint16_t port, long long session_id, int sample_interval);
@@ -43,17 +45,16 @@ public:
     void set_result_callback(ResultCallback cb) { result_callback_ = std::move(cb); }
 
 private:
-    static constexpr int kBatchIntervalMs        = 5000; // 5초마다 배치 전송
-    static constexpr int kMaxConsecutiveFailures = 3;    // 연속 수신 실패 허용 횟수
-    static constexpr int kRecvTimeoutMs          = 8000; // 수신 타임아웃 (배치 처리 여유)
-
     void run(std::string host, std::uint16_t port, long long session_id, int sample_interval);
 
     SOCKET connect_to(const std::string& host, std::uint16_t port);
     void close_socket(SOCKET& socket);
 
-    bool send_batch_packet(SOCKET socket, const std::vector<AnalysisResult>& batch,
-                           long long session_id, long long frame_id);
+    // Stage 1: JPEG 대신 keypoint JSON 전송 (바이너리 없음)
+    bool send_keypoint_packet(SOCKET socket, const AnalysisResult& kp,
+                              long long session_id, long long frame_id);
+
+    // AI 서버 응답 수신 (confidence 포함)
     bool recv_result_packet(SOCKET socket, AnalysisResult& out);
 
     static bool send_all(SOCKET socket, const char* data, int length);
@@ -66,18 +67,16 @@ private:
     static bool extract_bool(const std::string& json, const std::string& key, bool fallback = false);
 
     CaptureThread::SendFrameBuffer& send_buffer_;
-    EventShadowBuffer&              shadow_buffer_;
-    EventQueue&                     event_queue_;
-    AnalysisResultBuffer&           result_buffer_;
-    PostureEventDetector            detector_;
-    LocalMediaPipePoseAnalyzer      pose_analyzer_;
+    EventShadowBuffer& shadow_buffer_;
+    EventQueue& event_queue_;
+    AnalysisResultBuffer& result_buffer_;
+    PostureEventDetector detector_;
+
+    LocalMediaPipePoseAnalyzer pose_analyzer_;   // 클라이언트 로컬 keypoint 추출기
 
     ResultCallback result_callback_;
 
-    AnalysisResult last_server_result_;
-    bool           has_server_result_ = false;
-
     std::atomic_bool running_{ false };
     std::atomic_bool connected_{ false };
-    std::thread      worker_;
+    std::thread worker_;
 };
