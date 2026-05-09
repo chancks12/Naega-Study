@@ -65,6 +65,7 @@ void CStudySyncClientView::set_session_id(long long session_id,
 {
     session_id_         = session_id;
     session_start_time_ = start_time;
+    last_ai_state_.clear();
 
     if (transports_.log_sink) {
         transports_.log_sink->set_session_id(session_id);
@@ -178,7 +179,36 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
             stats_history_.push(r);
             if (session_id_ > 0 && transports_.log_sink)
                 transports_.log_sink->append_analysis(r);
-            alert_manager_.feed_local_analysis(r);
+
+            // AI 서버 state 변화 시에만 알림 (로컬 임계값 기반 알림 제거)
+            if (!r.state.empty() && r.state != last_ai_state_) {
+                last_ai_state_ = r.state;
+                if (r.state == "drowsy") {
+                    Alert alert;
+                    alert.type         = AlertType::Drowsy;
+                    alert.target       = AlertTarget::Popup;
+                    alert.timestamp_ms = r.timestamp_ms;
+                    alert.title        = "졸음 감지";
+                    alert.message      = "잠깐 스트레칭을 해보세요.";
+                    alert_manager_.feed_server_alert(alert);
+                } else if (r.state == "distracted") {
+                    Alert alert;
+                    alert.type         = AlertType::BadPosture;
+                    alert.target       = AlertTarget::Popup;
+                    alert.timestamp_ms = r.timestamp_ms;
+                    alert.title        = "집중력 저하 감지";
+                    alert.message      = "다시 집중해봐요!";
+                    alert_manager_.feed_server_alert(alert);
+                } else if (r.state == "absent") {
+                    Alert alert;
+                    alert.type         = AlertType::BadPosture;
+                    alert.target       = AlertTarget::Popup;
+                    alert.timestamp_ms = r.timestamp_ms;
+                    alert.title        = "자리 비움 감지";
+                    alert.message      = "자리로 돌아오세요.";
+                    alert_manager_.feed_server_alert(alert);
+                }
+            }
         });
         ai_tcp_client_.start(
             transport_config_.ai_server_host,

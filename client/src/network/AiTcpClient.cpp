@@ -113,16 +113,42 @@ void AiTcpClient::run(std::string host,
             }
             frame_index = 0;
 
-            // ── Stage 1: 클라이언트에서 keypoint 추출 ────────────
+            // ── 클라이언트에서 keypoint 추출 ────────────────────
             const auto kp_opt = pose_analyzer_.analyze(frame);
             if (!kp_opt.has_value()) {
                 continue;   // 빈 프레임이면 스킵
             }
             const AnalysisResult kp = kp_opt.value();
+            ++frame_id;
 
-            // ── keypoint JSON 전송 (JPEG 바이너리 없음) ───────────
-            if (!send_keypoint_packet(socket, kp, session_id, ++frame_id)) {
-                log_ai_tcp("send failed; reconnecting");
+            // ── 배치 누적 (150프레임) ─────────────────────────────
+            batch_buffer_.push_back(kp);
+
+            // 배치 미완성: 마지막 결과를 그대로 유지해 UI 갱신
+            if (static_cast<int>(batch_buffer_.size()) < kBatchSize) {
+                AnalysisResult display = kp;
+                if (has_last_result_) {
+                    display            = last_result_;
+                    display.ear        = kp.ear;
+                    display.neck_angle = kp.neck_angle;
+                    display.shoulder_diff = kp.shoulder_diff;
+                    display.head_yaw   = kp.head_yaw;
+                    display.head_pitch = kp.head_pitch;
+                    display.face_detected = kp.face_detected;
+                    display.timestamp_ms  = kp.timestamp_ms;
+                }
+                result_buffer_.update(display);
+                detector_.feed(display, shadow_buffer_);
+                if (result_callback_) result_callback_(display);
+                continue;
+            }
+
+            // ── 배치 완성 → 전송 ─────────────────────────────────
+            const bool send_ok = send_batch_packet(socket, batch_buffer_, session_id, ++batch_id_);
+            batch_buffer_.clear();
+
+            if (!send_ok) {
+                log_ai_tcp("batch send failed; reconnecting");
                 break;
             }
 
@@ -141,7 +167,6 @@ void AiTcpClient::run(std::string host,
                 }
                 log_ai_tcp("recv failed; using last state");
                 if (has_last_result_) {
-                    // 로컬 keypoint는 최신값, 서버 판정은 마지막 수신값 유지
                     result            = last_result_;
                     result.ear        = kp.ear;
                     result.neck_angle = kp.neck_angle;
@@ -151,7 +176,7 @@ void AiTcpClient::run(std::string host,
                     result.face_detected = kp.face_detected;
                     result.timestamp_ms  = kp.timestamp_ms;
                 } else {
-                    result = kp; // 한 번도 수신 못한 경우 로컬만 사용
+                    result = kp;
                 }
             }
 
@@ -164,6 +189,7 @@ void AiTcpClient::run(std::string host,
 
         close_socket(socket);
         connected_ = false;
+        batch_buffer_.clear();  // 재연결 시 누적 배치 초기화
     }
 
     log_ai_tcp("worker stopped");
@@ -202,26 +228,35 @@ void AiTcpClient::close_socket(SOCKET& socket)
     }
 }
 
-// ── Stage 1: keypoint JSON 전송 (바이너리 없음) ─────────────────────────
+// ── 배치 keypoint JSON 전송 (150프레임 단위) ─────────────────────────────
 
-bool AiTcpClient::send_keypoint_packet(SOCKET socket,
-                                       const AnalysisResult& kp,
-                                       long long session_id,
-                                       long long frame_id)
+bool AiTcpClient::send_batch_packet(SOCKET socket,
+                                    const std::vector<AnalysisResult>& batch,
+                                    long long session_id,
+                                    long long batch_id)
 {
     std::ostringstream json;
     json << "{"
-         << "\"protocol_no\":"   << kProtoKeypointPush
-         << ",\"session_id\":"   << session_id
-         << ",\"frame_id\":"     << frame_id
-         << ",\"timestamp_ms\":" << kp.timestamp_ms
-         << ",\"ear\":"          << kp.ear
-         << ",\"neck_angle\":"   << kp.neck_angle
-         << ",\"shoulder_diff\":" << kp.shoulder_diff
-         << ",\"head_yaw\":"     << kp.head_yaw
-         << ",\"head_pitch\":"   << kp.head_pitch
-         << ",\"face_detected\":" << kp.face_detected
-         << "}";
+         << "\"protocol_no\":"  << kProtoKeypointPush
+         << ",\"session_id\":"  << session_id
+         << ",\"batch_id\":"    << batch_id
+         << ",\"keypoints\":[";
+
+    for (std::size_t i = 0; i < batch.size(); ++i) {
+        const AnalysisResult& kp = batch[i];
+        if (i > 0) json << ",";
+        json << "{"
+             << "\"timestamp_ms\":"  << kp.timestamp_ms
+             << ",\"ear\":"          << kp.ear
+             << ",\"neck_angle\":"   << kp.neck_angle
+             << ",\"shoulder_diff\":" << kp.shoulder_diff
+             << ",\"head_yaw\":"     << kp.head_yaw
+             << ",\"head_pitch\":"   << kp.head_pitch
+             << ",\"face_detected\":" << kp.face_detected
+             << "}";
+    }
+
+    json << "]}";
 
     return send_json_only(socket, json.str());
 }

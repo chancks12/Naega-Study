@@ -2,6 +2,7 @@
 
 #include "alert/AlertDispatchThread.h"
 #include "alert/AlertManager.h"
+#include "model/Alert.h"
 #include "analysis/DummyAnalysisGenerator.h"
 #include "model/ReviewEventStore.h"
 #include "model/ServerStatsSnapshot.h"
@@ -99,4 +100,5 @@ private:
     LocalClipGarbageCollector clip_garbage_collector_;
 
     std::function<void()> stop_cb_;
+    std::string           last_ai_state_;   // AI 서버 마지막 state (중복 알림 방지)
 };

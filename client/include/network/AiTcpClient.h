@@ -50,9 +50,10 @@ private:
     SOCKET connect_to(const std::string& host, std::uint16_t port);
     void close_socket(SOCKET& socket);
 
-    // Stage 1: JPEG 대신 keypoint JSON 전송 (바이너리 없음)
-    bool send_keypoint_packet(SOCKET socket, const AnalysisResult& kp,
-                              long long session_id, long long frame_id);
+    // 배치 keypoint JSON 전송 (150프레임 단위)
+    bool send_batch_packet(SOCKET socket,
+                           const std::vector<AnalysisResult>& batch,
+                           long long session_id, long long batch_id);
 
     // AI 서버 응답 수신 (confidence 포함)
     bool recv_result_packet(SOCKET socket, AnalysisResult& out);
@@ -75,6 +76,11 @@ private:
     LocalMediaPipePoseAnalyzer pose_analyzer_;   // 클라이언트 로컬 keypoint 추출기
 
     ResultCallback result_callback_;
+
+    static constexpr int kBatchSize = 150;
+
+    std::vector<AnalysisResult> batch_buffer_;
+    long long batch_id_ = 0;
 
     AnalysisResult   last_result_;
     bool             has_last_result_     = false;
