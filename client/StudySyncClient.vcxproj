@@ -11,7 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <VCProjectVersion>17.0</VCProjectVersion>
+    <VCProjectVersion>18.0</VCProjectVersion>
     <ProjectGuid>{7C412E62-B75C-47B1-8C47-D2B38C71CC84}</ProjectGuid>
     <Keyword>MFCProj</Keyword>
     <RootNamespace>StudySyncClient</RootNamespace>
