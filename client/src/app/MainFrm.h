@@ -19,12 +19,15 @@ public:
 
     int user_id() const { return user_id_; }
 
+    static constexpr UINT WM_STOP_CAPTURE = WM_APP + 1;
+
 protected:
-    afx_msg int  OnCreate(LPCREATESTRUCT lpCreateStruct);
-    afx_msg void OnClose();
-    afx_msg void OnSize(UINT nType, int cx, int cy);
-    afx_msg void OnTabSelChange(NMHDR* pNMHDR, LRESULT* pResult);
-    afx_msg void OnBnClickedStop();
+    afx_msg int    OnCreate(LPCREATESTRUCT lpCreateStruct);
+    afx_msg void   OnClose();
+    afx_msg void   OnSize(UINT nType, int cx, int cy);
+    afx_msg void   OnTabSelChange(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void   OnBnClickedStop();
+    afx_msg LRESULT OnStopCaptureMsg(WPARAM, LPARAM);
     DECLARE_MESSAGE_MAP()
 
 private:

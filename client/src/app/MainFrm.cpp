@@ -23,6 +23,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_WM_SIZE()
     ON_NOTIFY(TCN_SELCHANGE, IDC_TAB_MAIN, OnTabSelChange)
     ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
+    ON_MESSAGE(WM_STOP_CAPTURE, OnStopCaptureMsg)
 END_MESSAGE_MAP()
 
 static constexpr int kTabH = 28;
@@ -228,26 +229,36 @@ void CMainFrame::stop_capture()
         font_stop_.DeleteObject();
     }
 
+    // capturing_ 먼저 해제 + 탭 UI 복원 → DestroyWindow 스레드 join 전에 화면 전환
+    capturing_ = false;
+    tab_ctrl_.ShowWindow(SW_SHOW);
+    if (panels_[active_tab_]) panels_[active_tab_]->ShowWindow(SW_SHOW);
+    {
+        CRect rc;
+        GetClientRect(&rc);
+        layout_content(rc.Width(), rc.Height());
+    }
+    RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+
     // 캡처 뷰 종료 (OnDestroy → 세션 종료 API + 스레드 정리)
     capture_view_->DestroyWindow();
     delete capture_view_;
     capture_view_ = nullptr;
-    capturing_ = false;
-
-    // 탭 UI 복원
-    tab_ctrl_.ShowWindow(SW_SHOW);
-    if (panels_[active_tab_]) panels_[active_tab_]->ShowWindow(SW_SHOW);
-
-    CRect rc;
-    GetClientRect(&rc);
-    layout_content(rc.Width(), rc.Height());
 }
 
 // ── 버튼 핸들러 ─────────────────────────────────────────────
 
 void CMainFrame::OnBnClickedStop()
 {
+    // PostMessage: 버튼 핸들러 반환 후 처리 — 동기 호출 시 스레드 join이 펌프를 블로킹함
+    btn_stop_.EnableWindow(FALSE);
+    PostMessage(WM_STOP_CAPTURE);
+}
+
+LRESULT CMainFrame::OnStopCaptureMsg(WPARAM, LPARAM)
+{
     stop_capture();
+    return 0;
 }
 
 // ── 종료 ────────────────────────────────────────────────────
