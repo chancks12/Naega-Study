@@ -18,9 +18,15 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and Exists('C:\opencv\build\include\opencv2\core\mat.hpp')">C:\opencv\build</OpenCVRoot>
+    <!-- 1순위: 환경변수 OPENCV_DIR (새 컴퓨터에서 이 값을 시스템 환경변수로 설정) -->
     <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and '$(OPENCV_DIR)'!=''">$(OPENCV_DIR)</OpenCVRoot>
+    <!-- 2순위: 기본 설치 경로 자동 감지 -->
+    <OpenCVRoot Condition="'$(OpenCVRoot)'=='' and Exists('C:\opencv\build\include\opencv2\core\mat.hpp')">C:\opencv\build</OpenCVRoot>
+    <!-- 폴백: 기본 경로 (빌드 오류 시 OPENCV_DIR 환경변수를 설정할 것) -->
     <OpenCVRoot Condition="'$(OpenCVRoot)'==''">C:\opencv\build</OpenCVRoot>
+    <!-- vc17(VS2022) 우선, 없으면 vc16(VS2019) -->
+    <OpenCVLibDir Condition="'$(OpenCVLibDir)'=='' and Exists('$(OpenCVRoot)\x64\vc17\lib')">$(OpenCVRoot)\x64\vc17\lib</OpenCVLibDir>
+    <OpenCVLibDir Condition="'$(OpenCVLibDir)'==''">$(OpenCVRoot)\x64\vc16\lib</OpenCVLibDir>
     <OpenCVWorldLib Condition="'$(Configuration)'=='Debug'">opencv_world4120d.lib</OpenCVWorldLib>
     <OpenCVWorldLib Condition="'$(Configuration)'!='Debug'">opencv_world4120.lib</OpenCVWorldLib>
   </PropertyGroup>
@@ -50,7 +56,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(OpenCVRoot)\x64\vc16\lib;$(ZMQ_DIR)\lib;$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OpenCVLibDir);$(ZMQ_DIR)\lib;$(SolutionDir)packages\Microsoft.ML.OnnxRuntime.1.18.1\runtimes\win-x64\native;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>$(OpenCVWorldLib);d2d1.lib;dxgi.lib;winhttp.lib;onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
