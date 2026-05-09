@@ -127,10 +127,32 @@ void AiTcpClient::run(std::string host,
             }
 
             // ── AI 서버 응답 수신 (TCN 시계열 판정) ──────────────
-            AnalysisResult result = kp;   // keypoint는 클라이언트 값 그대로 보존
-            if (!recv_result_packet(socket, result)) {
-                log_ai_tcp("receive failed; reconnecting");
-                break;
+            AnalysisResult result = kp;
+            if (recv_result_packet(socket, result)) {
+                last_result_          = result;
+                has_last_result_      = true;
+                consecutive_failures_ = 0;
+            } else {
+                ++consecutive_failures_;
+                if (consecutive_failures_ >= kMaxConsecutiveFailures) {
+                    log_ai_tcp("consecutive recv failures; reconnecting");
+                    consecutive_failures_ = 0;
+                    break;
+                }
+                log_ai_tcp("recv failed; using last state");
+                if (has_last_result_) {
+                    // 로컬 keypoint는 최신값, 서버 판정은 마지막 수신값 유지
+                    result            = last_result_;
+                    result.ear        = kp.ear;
+                    result.neck_angle = kp.neck_angle;
+                    result.shoulder_diff = kp.shoulder_diff;
+                    result.head_yaw   = kp.head_yaw;
+                    result.head_pitch = kp.head_pitch;
+                    result.face_detected = kp.face_detected;
+                    result.timestamp_ms  = kp.timestamp_ms;
+                } else {
+                    result = kp; // 한 번도 수신 못한 경우 로컬만 사용
+                }
             }
 
             result_buffer_.update(result);

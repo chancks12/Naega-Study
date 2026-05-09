@@ -76,6 +76,11 @@ private:
 
     ResultCallback result_callback_;
 
+    AnalysisResult   last_result_;
+    bool             has_last_result_     = false;
+    int              consecutive_failures_ = 0;
+    static constexpr int kMaxConsecutiveFailures = 5;
+
     std::atomic_bool running_{ false };
     std::atomic_bool connected_{ false };
     std::thread worker_;
