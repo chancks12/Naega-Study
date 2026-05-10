@@ -56,7 +56,8 @@ void AiTcpClient::start(const std::string& host,
                         int sample_interval)
 {
     if (running_.exchange(true)) return;
-    worker_ = std::thread(&AiTcpClient::run, this, host, port, session_id, sample_interval);
+    session_id_.store(session_id);
+    worker_ = std::thread(&AiTcpClient::run, this, host, port, sample_interval);
 }
 
 void AiTcpClient::stop()
@@ -73,7 +74,6 @@ void AiTcpClient::stop()
 
 void AiTcpClient::run(std::string host,
                       std::uint16_t port,
-                      long long session_id,
                       int sample_interval)
 {
     if (sample_interval <= 0) sample_interval = 1;
@@ -122,8 +122,7 @@ void AiTcpClient::run(std::string host,
             if (!kp_opt.has_value()) continue;
             const AnalysisResult kp = kp_opt.value();
 
-            // 전송 실패 시 재접속
-            if (!send_keypoint_packet(socket, kp, session_id, ++frame_id)) {
+            if (!send_keypoint_packet(socket, kp, session_id_.load(), ++frame_id)) {
                 log_ai_tcp("send failed; reconnecting");
                 conn_alive = false;
                 break;

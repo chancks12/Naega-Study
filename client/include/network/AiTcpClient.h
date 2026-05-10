@@ -40,6 +40,9 @@ public:
     void start(const std::string& host, std::uint16_t port, long long session_id, int sample_interval);
     void stop();
 
+    // 세션 API 응답 도착 후 session_id 갱신 (이후 전송 패킷부터 반영)
+    void update_session_id(long long session_id) { session_id_.store(session_id); }
+
     bool is_connected() const { return connected_.load(); }
 
     using ResultCallback = std::function<void(const AnalysisResult&)>;
@@ -47,7 +50,7 @@ public:
 
 private:
     // 전송 루프 (worker_ 스레드)
-    void run(std::string host, std::uint16_t port, long long session_id, int sample_interval);
+    void run(std::string host, std::uint16_t port, int sample_interval);
 
     // 수신 루프 (run 내부에서 별도 스레드로 실행)
     // conn_alive가 false가 되거나 수신 오류 발생 시 종료
@@ -86,7 +89,8 @@ private:
     AnalysisResult   last_result_;       // 서버에서 마지막으로 수신한 분석 결과
     bool             has_last_result_ = false;
 
-    std::atomic_bool running_{ false };
-    std::atomic_bool connected_{ false };
-    std::thread      worker_;
+    std::atomic<long long> session_id_{ 0 };  // update_session_id()로 런타임 갱신 가능
+    std::atomic_bool       running_{ false };
+    std::atomic_bool       connected_{ false };
+    std::thread            worker_;
 };

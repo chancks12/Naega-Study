@@ -37,6 +37,12 @@ public:
     // 세션 ID + 시작 시각 주입 (MainFrm::start_capture() 에서 호출)
     void set_session_id(long long session_id, const std::string& start_time);
 
+    // 세션 API 응답 도착 후 session_id만 갱신 (비동기 세션 시작 시 사용)
+    void update_session_id(long long session_id);
+
+    // 세션별 클립 저장 경로 갱신
+    void set_clip_directory(const std::string& dir);
+
     // 학습 종료 콜백 — "학습 종료" 버튼 클릭 시 MainFrm::stop_capture() 호출
     void set_stop_callback(std::function<void()> cb) { stop_cb_ = std::move(cb); }
 

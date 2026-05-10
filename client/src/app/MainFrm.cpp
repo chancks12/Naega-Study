@@ -24,6 +24,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_NOTIFY(TCN_SELCHANGE, IDC_TAB_MAIN, OnTabSelChange)
     ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
     ON_MESSAGE(WM_STOP_CAPTURE, OnStopCaptureMsg)
+    ON_MESSAGE(WM_SESSION_STARTED, OnSessionStarted)
 END_MESSAGE_MAP()
 
 static constexpr int kTabH = 28;
@@ -156,7 +157,6 @@ void CMainFrame::start_capture()
 {
     if (capturing_) return;
 
-    // 세션 시작 (실패해도 오프라인으로 진행)
     SYSTEMTIME st;
     GetLocalTime(&st);
     char iso[32];
@@ -164,29 +164,20 @@ void CMainFrame::start_capture()
              st.wYear, st.wMonth, st.wDay,
              st.wHour, st.wMinute, st.wSecond);
 
-    SessionApi session_api(WinHttpClient::instance());
-    const SessionStartResult result = session_api.start(iso);
-
-    // 세션별 클립 폴더 설정
-    ClientTransportConfig config;
-    if (result.success && result.session_id > 0) {
-        config.clip_directory = "event_clips/" + std::to_string(result.session_id);
-    }
-
     // 탭 UI 숨기기
     tab_ctrl_.ShowWindow(SW_HIDE);
     for (auto* p : panels_) if (p) p->ShowWindow(SW_HIDE);
 
-    // 캡처 뷰 생성 (전체화면)
+    // 캡처 뷰 생성 (전체화면) — 세션 ID 없이 먼저 시작
     CRect rc;
     GetClientRect(&rc);
     const CString cls = AfxRegisterWndClass(CS_HREDRAW | CS_VREDRAW);
-    capture_view_ = new CStudySyncClientView(config);
+    capture_view_ = new CStudySyncClientView({});
     capture_view_->Create(cls, nullptr,
                           WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                           rc, this, AFX_IDW_PANE_FIRST);
 
-    // 학습 종료 버튼 — D2D 위에 표시되도록 CMainFrame 자식으로 생성
+    // 학습 종료 버튼
     font_stop_.CreateFont(
         15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -199,13 +190,25 @@ void CMainFrame::start_capture()
                      this, IDC_BTN_STOP_CAPTURE);
     btn_stop_.SetFont(&font_stop_);
 
-    if (result.success && result.session_id > 0) {
-        capture_view_->set_session_id(result.session_id, iso);
-    } else {
-        OutputDebugStringA("[StudySync] session/start failed — running offline\n");
-    }
+    // 캘리브레이션은 session_id=0으로라도 반드시 시작 (알림 가드 보장)
+    capture_view_->set_session_id(0, iso);
 
     capturing_ = true;
+
+    // 세션 API는 백그라운드에서 호출 — 성공 시 session_id 주입
+    const std::string iso_str = iso;
+    const HWND view_hwnd = capture_view_->GetSafeHwnd();
+    std::thread([this, iso_str, view_hwnd] {
+        SessionApi session_api(WinHttpClient::instance());
+        const SessionStartResult result = session_api.start(iso_str.c_str());
+        if (result.success && result.session_id > 0) {
+            // UI 스레드에서 session_id 갱신
+            PostMessage(WM_SESSION_STARTED,
+                        static_cast<WPARAM>(result.session_id), 0);
+        } else {
+            OutputDebugStringA("[StudySync] session/start failed — running offline\n");
+        }
+    }).detach();
 }
 
 // ── 캡처 종료 ───────────────────────────────────────────────
@@ -258,6 +261,19 @@ void CMainFrame::OnBnClickedStop()
 LRESULT CMainFrame::OnStopCaptureMsg(WPARAM, LPARAM)
 {
     stop_capture();
+    return 0;
+}
+
+// 세션 API 응답 도착 → capture_view_에 session_id 갱신
+LRESULT CMainFrame::OnSessionStarted(WPARAM wParam, LPARAM)
+{
+    if (capturing_ && capture_view_) {
+        const long long session_id = static_cast<long long>(wParam);
+        capture_view_->update_session_id(session_id);
+
+        // 세션별 클립 폴더 경로도 갱신
+        capture_view_->set_clip_directory("event_clips/" + std::to_string(session_id));
+    }
     return 0;
 }
 

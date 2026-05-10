@@ -16,6 +16,8 @@ BEGIN_MESSAGE_MAP(CClipsPanel, CWnd)
     ON_WM_PAINT()
     ON_WM_VSCROLL()
     ON_WM_MOUSEWHEEL()
+    ON_WM_SHOWWINDOW()
+    ON_WM_LBUTTONDOWN()
 END_MESSAGE_MAP()
 
 static constexpr COLORREF kBg      = RGB(22, 22, 34);
@@ -45,9 +47,9 @@ void CClipsPanel::scan_clips()
         if (!entry.is_directory()) continue;
 
         SessionEntry se;
-        se.name = entry.path().filename().wstring();
+        se.name      = entry.path().filename().wstring();
+        se.full_path = fs::absolute(entry.path(), ec).wstring();
 
-        // count clip.mp4 files inside session subfolders
         for (const auto& ev_entry : fs::directory_iterator(entry.path(), ec)) {
             if (!ev_entry.is_directory()) continue;
             const fs::path clip = ev_entry.path() / L"clip.mp4";
@@ -192,4 +194,34 @@ BOOL CClipsPanel::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
     SetScrollPos(SB_VERT, scroll_pos_, TRUE);
     Invalidate();
     return TRUE;
+}
+
+// 탭이 표시될 때마다 클립 목록 갱신 (세션 종료 후 새 클립 반영)
+void CClipsPanel::OnShowWindow(BOOL bShow, UINT /*nStatus*/)
+{
+    if (bShow) {
+        scan_clips();
+        Invalidate();
+    }
+}
+
+// 행 클릭 → Windows 탐색기로 세션 폴더 열기
+void CClipsPanel::OnLButtonDown(UINT /*nFlags*/, CPoint point)
+{
+    const int idx = hit_test(point);
+    if (idx < 0) return;
+
+    const std::wstring& path = sessions_[static_cast<std::size_t>(idx)].full_path;
+    if (!path.empty()) {
+        ShellExecuteW(nullptr, L"explore", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+}
+
+int CClipsPanel::hit_test(CPoint pt) const
+{
+    if (pt.y < kHeaderH) return -1;
+
+    const int idx = (pt.y - kHeaderH + scroll_pos_) / kRowH;
+    if (idx < 0 || idx >= static_cast<int>(sessions_.size())) return -1;
+    return idx;
 }
