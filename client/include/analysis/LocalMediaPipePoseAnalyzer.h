@@ -43,5 +43,9 @@ private:
     // 얼굴 위치 감지 (Haar cascade) → crop 영역 계산용
     cv::CascadeClassifier face_cascade_;
 
+    // 이전 프레임에서 마지막으로 Haar이 성공한 얼굴 영역
+    // Haar 실패 시 이 값을 fallback으로 사용 (맹목적 화면 중앙보다 정확)
+    cv::Rect last_good_face_rect_;
+
     bool initialized_ = false;
 };

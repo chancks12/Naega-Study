@@ -106,9 +106,15 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             }
         }
 
-        // Haar 실패 시 화면 중앙 상단을 얼굴 영역으로 사용
+        // Haar 실패 시: 이전에 성공한 위치 → 그것도 없으면 화면 중앙 상단
         if (face_rect.empty()) {
-            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
+            if (!last_good_face_rect_.empty()) {
+                face_rect = last_good_face_rect_;
+            } else {
+                face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
+            }
+        } else {
+            last_good_face_rect_ = face_rect;
         }
     }
 
@@ -153,9 +159,12 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             if (conf > 0.5f) {
                 const float* lm = outs[0].GetTensorData<float>();
                 const std::vector<float> lm195(lm, lm + 195);
-                // 크롭 크기 기준으로 좌표 계산 (각도/차이값이므로 절대 위치 불필요)
-                result.neck_angle    = compute_neck_angle(lm195, body_crop.width, body_crop.height);
-                result.shoulder_diff = compute_shoulder_diff(lm195, body_crop.height);
+                const double raw_neck = compute_neck_angle(lm195, body_crop.width, body_crop.height);
+                // 90° 초과는 물리적으로 불가능한 앉은 자세 → 랜드마크 오검출로 간주
+                if (raw_neck <= 90.0) {
+                    result.neck_angle    = raw_neck;
+                    result.shoulder_diff = compute_shoulder_diff(lm195, body_crop.height);
+                }
             }
         } catch (const Ort::Exception& e) {
             OutputDebugStringA(("[LocalPose] pose run: " + std::string(e.what()) + "\n").c_str());

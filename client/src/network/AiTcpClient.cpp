@@ -160,17 +160,25 @@ void AiTcpClient::run(std::string host,
 }
 
 // ── 수신 루프 ───────────────────────────────────────────────────────────────
-// 서버는 150프레임 추론 후 state가 바뀔 때만 응답을 전송한다.
+// 서버는 매 프레임에 응답을 전송한다.
 // SO_RCVTIMEO 만료(WSAETIMEDOUT)는 정상 — 응답이 없다는 뜻이므로 계속 대기.
-// 그 외 오류는 연결 단절로 간주하고 conn_alive를 false로 설정해 재접속 유도.
+// WSAGetLastError()==0 은 소켓은 정상이나 파싱 실패 — 재접속하지 않고 무시.
+// 그 외 오류(실제 소켓 단절)만 재접속을 유도한다.
 
 void AiTcpClient::recv_loop(SOCKET socket, std::atomic_bool& conn_alive)
 {
     while (running_ && conn_alive) {
         AnalysisResult result;
         if (!recv_result_packet(socket, result)) {
-            if (WSAGetLastError() == WSAETIMEDOUT) continue; // 응답 없음 → 대기 계속
-            log_ai_tcp("recv error; signaling reconnect");
+            const int err = WSAGetLastError();
+            if (err == WSAETIMEDOUT) continue; // 응답 없음 → 대기 계속
+            if (err == 0) {
+                // 소켓은 정상이나 JSON 파싱 실패 (protocol_no 불일치 등)
+                // 재접속하면 AI 서버의 150-frame 카운터가 리셋되므로 무시
+                log_ai_tcp("recv parse mismatch; ignoring packet");
+                continue;
+            }
+            log_ai_tcp("recv socket error; signaling reconnect");
             conn_alive = false;
             return;
         }
