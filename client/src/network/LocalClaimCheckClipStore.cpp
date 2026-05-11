@@ -58,7 +58,17 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
     const std::string clip_id = "local:event_" + std::to_string(event.timestamp_ms);
     const std::uint64_t created_at = now_ms();
     const std::uint64_t expires_at = created_at + static_cast<std::uint64_t>(retention_days_) * 24ULL * 60ULL * 60ULL * 1000ULL;
-    fs::path event_dir = fs::path(clip_directory_) / ("event_" + std::to_string(event.timestamp_ms));
+
+    // 이벤트 폴더명: HHMMSS_state (예: 143205_drowsy) — 사람이 읽기 쉬운 형식
+    char time_str[8]{};
+    {
+        const time_t ts = static_cast<time_t>(event.timestamp_ms / 1000);
+        struct tm ltm{};
+        localtime_s(&ltm, &ts);
+        strftime(time_str, sizeof(time_str), "%H%M%S", &ltm);
+    }
+    const std::string event_dir_name = std::string(time_str) + "_" + event_type_name(event.type);
+    fs::path event_dir = fs::path(clip_directory_) / event_dir_name;
     fs::create_directories(event_dir);
 
     std::size_t written = 0;

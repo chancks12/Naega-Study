@@ -165,15 +165,24 @@ void CMainFrame::start_capture()
              st.wYear, st.wMonth, st.wDay,
              st.wHour, st.wMinute, st.wSecond);
 
+    // 세션 폴더명: 20250511_143022 형식 (사람이 읽기 쉬운 날짜+시각)
+    char clip_dt[20];
+    snprintf(clip_dt, sizeof(clip_dt), "%04d%02d%02d_%02d%02d%02d",
+             st.wYear, st.wMonth, st.wDay,
+             st.wHour, st.wMinute, st.wSecond);
+
+    ClientTransportConfig config;
+    config.clip_directory = std::string("event_clips/") + clip_dt;
+
     // 탭 UI 숨기기
     tab_ctrl_.ShowWindow(SW_HIDE);
     for (auto* p : panels_) if (p) p->ShowWindow(SW_HIDE);
 
-    // 캡처 뷰 생성 (전체화면) — 세션 ID 없이 먼저 시작
+    // 캡처 뷰 생성 (전체화면)
     CRect rc;
     GetClientRect(&rc);
     const CString cls = AfxRegisterWndClass(CS_HREDRAW | CS_VREDRAW);
-    capture_view_ = new CStudySyncClientView({});
+    capture_view_ = new CStudySyncClientView(config);
     capture_view_->Create(cls, nullptr,
                           WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                           rc, this, AFX_IDW_PANE_FIRST);
@@ -289,9 +298,7 @@ LRESULT CMainFrame::OnSessionStarted(WPARAM wParam, LPARAM)
     if (capturing_ && capture_view_) {
         const long long session_id = static_cast<long long>(wParam);
         capture_view_->update_session_id(session_id);
-
-        // 세션별 클립 폴더 경로도 갱신
-        capture_view_->set_clip_directory("event_clips/" + std::to_string(session_id));
+        // 클립 폴더는 세션 시작 시각 기반으로 이미 설정됨 — session_id로 변경하지 않음
     }
     return 0;
 }

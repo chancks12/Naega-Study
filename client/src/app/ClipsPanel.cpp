@@ -20,10 +20,39 @@ BEGIN_MESSAGE_MAP(CClipsPanel, CWnd)
     ON_WM_LBUTTONDOWN()
 END_MESSAGE_MAP()
 
-static constexpr COLORREF kBg      = RGB(22, 22, 34);
-static constexpr COLORREF kRowBg   = RGB(30, 30, 46);
-static constexpr COLORREF kRowAlt  = RGB(26, 26, 40);
-static constexpr COLORREF kAccent  = RGB(80, 150, 240);
+static constexpr COLORREF kBg         = RGB(22, 22, 34);
+static constexpr COLORREF kSessionBg  = RGB(34, 34, 52);
+static constexpr COLORREF kClipBg     = RGB(28, 28, 44);
+static constexpr COLORREF kClipAltBg  = RGB(24, 24, 38);
+static constexpr COLORREF kAccent     = RGB(80, 150, 240);
+static constexpr COLORREF kAccentSub  = RGB(60, 110, 200);
+
+namespace {
+
+// "20250511_143022" → L"2025-05-11 14:30:22"
+std::wstring parse_session_name(const std::wstring& s)
+{
+    if (s.size() < 15) return s;
+    return s.substr(0, 4) + L"-" + s.substr(4, 2) + L"-" + s.substr(6, 2)
+         + L" " + s.substr(9, 2) + L":" + s.substr(11, 2) + L":" + s.substr(13, 2);
+}
+
+// "143205_drowsy" → L"14:32 · 졸음"
+std::wstring parse_clip_label(const std::wstring& s)
+{
+    if (s.size() < 6) return s;
+    const auto sep = s.find(L'_');
+    const std::wstring state_en = (sep != std::wstring::npos) ? s.substr(sep + 1) : L"";
+
+    std::wstring state_kr;
+    if      (state_en == L"drowsy")  state_kr = L"졸음";
+    else if (state_en == L"absent")  state_kr = L"자리 비움";
+    else                              state_kr = L"집중력 저하";
+
+    return s.substr(0, 2) + L":" + s.substr(2, 2) + L" · " + state_kr;
+}
+
+} // namespace
 
 int CClipsPanel::OnCreate(LPCREATESTRUCT lp)
 {
@@ -43,18 +72,32 @@ void CClipsPanel::scan_clips()
     std::error_code ec;
     if (!fs::exists(base, ec)) return;
 
-    for (const auto& entry : fs::directory_iterator(base, ec)) {
-        if (!entry.is_directory()) continue;
+    for (const auto& sess_entry : fs::directory_iterator(base, ec)) {
+        if (!sess_entry.is_directory()) continue;
 
         SessionEntry se;
-        se.name      = entry.path().filename().wstring();
-        se.full_path = fs::absolute(entry.path(), ec).wstring();
+        const std::wstring dir_name = sess_entry.path().filename().wstring();
+        se.display_name = parse_session_name(dir_name);
 
-        for (const auto& ev_entry : fs::directory_iterator(entry.path(), ec)) {
+        std::vector<CClipsPanel::ClipEntry> clips;
+        for (const auto& ev_entry : fs::directory_iterator(sess_entry.path(), ec)) {
             if (!ev_entry.is_directory()) continue;
-            const fs::path clip = ev_entry.path() / L"clip.mp4";
-            if (fs::exists(clip, ec)) ++se.clip_count;
+
+            const fs::path mp4 = ev_entry.path() / L"clip.mp4";
+            if (!fs::exists(mp4, ec)) continue;
+
+            ClipEntry ce;
+            ce.label    = parse_clip_label(ev_entry.path().filename().wstring());
+            ce.mp4_path = fs::absolute(mp4, ec).wstring();
+            clips.push_back(std::move(ce));
         }
+
+        // 클립을 이름(= 시각) 오름차순으로 정렬
+        std::sort(clips.begin(), clips.end(),
+                  [](const ClipEntry& a, const ClipEntry& b) {
+                      return a.label < b.label;
+                  });
+        se.clips = std::move(clips);
 
         sessions_.push_back(std::move(se));
     }
@@ -62,21 +105,31 @@ void CClipsPanel::scan_clips()
     // 최신 세션(폴더 이름 내림차순) 먼저
     std::sort(sessions_.begin(), sessions_.end(),
               [](const SessionEntry& a, const SessionEntry& b) {
-                  return a.name > b.name;
+                  return a.display_name > b.display_name;
               });
 
-    // 스크롤바 설정
-    const int total_h = static_cast<int>(sessions_.size()) * kRowH;
+    // 스크롤바
+    const int content_h = total_rows_height();
     SCROLLINFO si{};
     si.cbSize = sizeof(si);
     si.fMask  = SIF_RANGE | SIF_POS | SIF_PAGE;
     si.nMin   = 0;
-    si.nMax   = total_h;
+    si.nMax   = content_h;
     CRect rc;
     GetClientRect(&rc);
-    si.nPage  = rc.Height() - kHeaderH;
-    si.nPos   = 0;
+    si.nPage = max(1, rc.Height() - kHeaderH);
+    si.nPos  = 0;
     SetScrollInfo(SB_VERT, &si, TRUE);
+}
+
+int CClipsPanel::total_rows_height() const
+{
+    int h = 0;
+    for (const auto& se : sessions_) {
+        h += kSessionRowH;
+        h += static_cast<int>(se.clips.size()) * kClipRowH;
+    }
+    return h;
 }
 
 void CClipsPanel::OnPaint()
@@ -87,7 +140,7 @@ void CClipsPanel::OnPaint()
     dc.FillSolidRect(&rc, kBg);
     dc.SetBkMode(TRANSPARENT);
 
-    // ── 제목 ─────────────────────────────────────────────────
+    // ── 패널 제목 ─────────────────────────────────────────────
     CFont title_font;
     title_font.CreateFont(20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -112,45 +165,74 @@ void CClipsPanel::OnPaint()
         return;
     }
 
-    // ── 행 목록 ──────────────────────────────────────────────
-    CFont row_font;
-    row_font.CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    // ── 폰트 ─────────────────────────────────────────────────
+    CFont sess_font;
+    sess_font.CreateFont(14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
-    CFont sub_font;
-    sub_font.CreateFont(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    CFont clip_font;
+    clip_font.CreateFont(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
 
     dc.IntersectClipRect(rc.left, rc.top + kHeaderH, rc.right, rc.bottom);
 
-    for (int i = 0; i < static_cast<int>(sessions_.size()); ++i) {
-        const int y = kHeaderH + i * kRowH - scroll_pos_;
-        if (y + kRowH < kHeaderH) continue;
-        if (y > rc.bottom) break;
+    int y = kHeaderH - scroll_pos_;
 
-        const COLORREF bg = (i % 2 == 0) ? kRowBg : kRowAlt;
-        dc.FillSolidRect(CRect(rc.left, y, rc.right, y + kRowH), bg);
+    for (const auto& se : sessions_) {
+        // ── 세션 헤더 행 ─────────────────────────────────────
+        if (y + kSessionRowH >= kHeaderH && y <= rc.bottom) {
+            dc.FillSolidRect(CRect(rc.left, y, rc.right, y + kSessionRowH), kSessionBg);
+            dc.FillSolidRect(CRect(rc.left, y, rc.left + 4, y + kSessionRowH), kAccent);
 
-        // accent bar
-        dc.FillSolidRect(CRect(rc.left, y, rc.left + 3, y + kRowH), kAccent);
+            old = dc.SelectObject(&sess_font);
+            dc.SetTextColor(RGB(200, 210, 240));
+            CRect name_rc(rc.left + 20, y, rc.right - 60, y + kSessionRowH);
+            dc.DrawText(se.display_name.c_str(),
+                        static_cast<int>(se.display_name.size()),
+                        &name_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-        const auto& se = sessions_[i];
+            // 클립 개수 뱃지 (오른쪽)
+            CFont badge_font;
+            badge_font.CreateFont(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, _T("Segoe UI"));
+            dc.SelectObject(&badge_font);
+            dc.SetTextColor(RGB(130, 160, 220));
+            CRect badge_rc(rc.right - 60, y, rc.right - 8, y + kSessionRowH);
+            CString badge;
+            badge.Format(_T("%d개"), static_cast<int>(se.clips.size()));
+            dc.DrawText(badge, &badge_rc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
-        old = dc.SelectObject(&row_font);
-        dc.SetTextColor(RGB(210, 210, 230));
-        CRect name_rc(rc.left + 20, y + 8, rc.right - 80, y + kRowH / 2 + 2);
-        dc.DrawText(se.name.c_str(), static_cast<int>(se.name.size()),
-                    &name_rc, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            dc.SelectObject(old);
+        }
+        y += kSessionRowH;
 
-        dc.SelectObject(&sub_font);
-        dc.SetTextColor(RGB(110, 110, 140));
-        CRect sub_rc(rc.left + 20, y + kRowH / 2 + 2, rc.right - 80, y + kRowH - 6);
-        CString sub;
-        sub.Format(_T("클립 %d개"), se.clip_count);
-        dc.DrawText(sub, &sub_rc, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+        // ── 클립 행들 ─────────────────────────────────────────
+        for (int ci = 0; ci < static_cast<int>(se.clips.size()); ++ci) {
+            if (y + kClipRowH >= kHeaderH && y <= rc.bottom) {
+                const COLORREF bg = (ci % 2 == 0) ? kClipBg : kClipAltBg;
+                dc.FillSolidRect(CRect(rc.left, y, rc.right, y + kClipRowH), bg);
 
-        dc.SelectObject(old);
+                // 들여쓰기 구분선
+                dc.FillSolidRect(CRect(rc.left + 16, y + 8, rc.left + 18, y + kClipRowH - 8), kAccentSub);
+
+                old = dc.SelectObject(&clip_font);
+                dc.SetTextColor(RGB(180, 190, 220));
+                CRect label_rc(rc.left + 28, y, rc.right - 16, y + kClipRowH);
+                dc.DrawText(se.clips[ci].label.c_str(),
+                            static_cast<int>(se.clips[ci].label.size()),
+                            &label_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+                // ▶ 재생 힌트 (오른쪽)
+                dc.SetTextColor(RGB(80, 140, 220));
+                CRect play_rc(rc.right - 48, y, rc.right - 8, y + kClipRowH);
+                dc.DrawText(_T("▶"), &play_rc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+                dc.SelectObject(old);
+            }
+            y += kClipRowH;
+        }
     }
 }
 
@@ -163,13 +245,13 @@ void CClipsPanel::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pBar*/)
 
     int new_pos = si.nPos;
     switch (nSBCode) {
-    case SB_TOP:          new_pos = si.nMin; break;
-    case SB_BOTTOM:       new_pos = si.nMax; break;
-    case SB_LINEUP:       new_pos -= kRowH; break;
-    case SB_LINEDOWN:     new_pos += kRowH; break;
-    case SB_PAGEUP:       new_pos -= si.nPage; break;
-    case SB_PAGEDOWN:     new_pos += si.nPage; break;
-    case SB_THUMBTRACK:   new_pos = static_cast<int>(nPos); break;
+    case SB_TOP:        new_pos = si.nMin; break;
+    case SB_BOTTOM:     new_pos = si.nMax; break;
+    case SB_LINEUP:     new_pos -= kClipRowH; break;
+    case SB_LINEDOWN:   new_pos += kClipRowH; break;
+    case SB_PAGEUP:     new_pos -= si.nPage; break;
+    case SB_PAGEDOWN:   new_pos += si.nPage; break;
+    case SB_THUMBTRACK: new_pos = static_cast<int>(nPos); break;
     default: return;
     }
 
@@ -182,7 +264,7 @@ void CClipsPanel::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pBar*/)
 
 BOOL CClipsPanel::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 {
-    const int delta = (zDelta > 0 ? -kRowH : kRowH);
+    const int delta = (zDelta > 0 ? -kClipRowH * 3 : kClipRowH * 3);
     SCROLLINFO si{};
     si.cbSize = sizeof(si);
     si.fMask  = SIF_ALL;
@@ -196,7 +278,7 @@ BOOL CClipsPanel::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
     return TRUE;
 }
 
-// 탭이 표시될 때마다 클립 목록 갱신 (세션 종료 후 새 클립 반영)
+// 탭이 표시될 때마다 클립 목록 갱신
 void CClipsPanel::OnShowWindow(BOOL bShow, UINT /*nStatus*/)
 {
     if (bShow) {
@@ -205,23 +287,25 @@ void CClipsPanel::OnShowWindow(BOOL bShow, UINT /*nStatus*/)
     }
 }
 
-// 행 클릭 → Windows 탐색기로 세션 폴더 열기
+// 클립 행 클릭 → 기본 동영상 플레이어로 재생
 void CClipsPanel::OnLButtonDown(UINT /*nFlags*/, CPoint point)
 {
-    const int idx = hit_test(point);
-    if (idx < 0) return;
-
-    const std::wstring& path = sessions_[static_cast<std::size_t>(idx)].full_path;
-    if (!path.empty()) {
-        ShellExecuteW(nullptr, L"explore", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
+    const ClipEntry* clip = hit_test_clip(point);
+    if (!clip || clip->mp4_path.empty()) return;
+    ShellExecuteW(nullptr, L"open", clip->mp4_path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-int CClipsPanel::hit_test(CPoint pt) const
+const CClipsPanel::ClipEntry* CClipsPanel::hit_test_clip(CPoint pt) const
 {
-    if (pt.y < kHeaderH) return -1;
+    if (pt.y < kHeaderH) return nullptr;
 
-    const int idx = (pt.y - kHeaderH + scroll_pos_) / kRowH;
-    if (idx < 0 || idx >= static_cast<int>(sessions_.size())) return -1;
-    return idx;
+    int y = kHeaderH - scroll_pos_;
+    for (const auto& se : sessions_) {
+        y += kSessionRowH; // 세션 헤더 건너뜀
+        for (const auto& clip : se.clips) {
+            if (pt.y >= y && pt.y < y + kClipRowH) return &clip;
+            y += kClipRowH;
+        }
+    }
+    return nullptr;
 }
