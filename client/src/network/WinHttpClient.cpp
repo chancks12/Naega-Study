@@ -16,10 +16,15 @@ WinHttpClient::WinHttpClient()
 {
     session_ = WinHttpOpen(
         L"StudySyncClient/1.0",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_ACCESS_TYPE_NO_PROXY,   // 시스템 프록시 무시 — LAN 서버 직접 접속
         WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS,
         0);
+
+    if (session_) {
+        // 타임아웃 명시: resolve=5s, connect=10s, send=30s, receive=60s
+        WinHttpSetTimeouts(session_, 5000, 10000, 30000, 60000);
+    }
 }
 
 WinHttpClient::~WinHttpClient()
