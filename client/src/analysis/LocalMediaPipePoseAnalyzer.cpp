@@ -181,11 +181,12 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                 const float* lm_ptr = outs[0].GetTensorData<float>();
                 const size_t elem_count = outs[0].GetTensorTypeAndShapeInfo().GetElementCount();
 
-                // 랜드마크당 값 수 자동 감지 (MediaPipe 버전마다 3·4·5 다름)
-                // landmark 12 (right_shoulder)까지 최소 elem_count 필요
+                // 랜드마크당 값 수 감지
+                // mediapipe 0.10.14 full 모델: 195 = 65×3 (33 주요 + 32 보조, stride=3)
+                // 195 >= 33×5=165 로 잘못 판단하지 않도록 나눗셈 우선순위 사용
                 int stride = 3;
-                if      (elem_count >= static_cast<size_t>(33 * 5)) stride = 5;
-                else if (elem_count >= static_cast<size_t>(33 * 4)) stride = 4;
+                if      (elem_count % 3 != 0 && elem_count % 5 == 0) stride = 5;
+                else if (elem_count % 3 != 0 && elem_count % 4 == 0) stride = 4;
 
                 const size_t min_needed = static_cast<size_t>(12 * stride + stride);
                 if (elem_count >= min_needed) {
