@@ -5,6 +5,7 @@ class CMainFrame;
 class CHomePanel : public CWnd {
 public:
     explicit CHomePanel(CMainFrame* frame) noexcept;
+    void set_start_enabled(bool enabled);
 
 protected:
     afx_msg int  OnCreate(LPCREATESTRUCT lp);

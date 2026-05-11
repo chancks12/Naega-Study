@@ -82,6 +82,12 @@ void CHomePanel::OnSize(UINT, int cx, int cy)
     }
 }
 
+void CHomePanel::set_start_enabled(bool enabled)
+{
+    if (btn_start_.GetSafeHwnd())
+        btn_start_.EnableWindow(enabled ? TRUE : FALSE);
+}
+
 void CHomePanel::OnBnClickedStart()
 {
     frame_->start_capture();

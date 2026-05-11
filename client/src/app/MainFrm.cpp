@@ -156,7 +156,7 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
 
 void CMainFrame::start_capture()
 {
-    if (capturing_) return;
+    if (capturing_ || tearing_down_) return;
 
     SYSTEMTIME st;
     GetLocalTime(&st);
@@ -226,6 +226,11 @@ void CMainFrame::start_capture()
 void CMainFrame::stop_capture()
 {
     if (!capturing_ || !capture_view_) return;
+    tearing_down_ = true;
+
+    // 스레드 정리 완료 전까지 시작 버튼 비활성화
+    if (auto* home = static_cast<CHomePanel*>(panels_[TAB_HOME]))
+        home->set_start_enabled(false);
 
     // 복기 이벤트 확인 (뷰 종료 전에)
     {
@@ -274,6 +279,12 @@ LRESULT CMainFrame::OnDestroyCaptureView(WPARAM, LPARAM lParam)
         view->DestroyWindow();
         delete view;
     }
+
+    // 구 뷰 완전 소멸 → 이제 새 세션 시작 가능
+    tearing_down_ = false;
+    if (auto* home = static_cast<CHomePanel*>(panels_[TAB_HOME]))
+        home->set_start_enabled(true);
+
     return 0;
 }
 

@@ -45,8 +45,11 @@ private:
     CWnd* panels_[TAB_COUNT] = {};
     int   active_tab_ = TAB_HOME;
 
-    CStudySyncClientView* capture_view_ = nullptr;
+    CStudySyncClientView* capture_view_  = nullptr;
     bool                  capturing_    = false;
+    // stop_capture() 이후 구 뷰의 스레드가 완전히 정리될 때까지 true
+    // 이 플래그가 true인 동안 start_capture()를 막아 카메라 이중 점유를 방지
+    bool                  tearing_down_ = false;
 
     CButton btn_stop_;
     CFont   font_stop_;
