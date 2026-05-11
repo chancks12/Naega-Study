@@ -314,6 +314,12 @@ LRESULT CMainFrame::OnSessionStarted(WPARAM wParam, LPARAM)
     return 0;
 }
 
+void CMainFrame::update_camera_fps(int fps)
+{
+    if (capturing_ && capture_view_)
+        capture_view_->update_camera_fps(fps);
+}
+
 // ── 종료 ────────────────────────────────────────────────────
 
 void CMainFrame::OnClose()

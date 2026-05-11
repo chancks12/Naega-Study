@@ -37,8 +37,8 @@ public:
     // 세션 ID + 시작 시각 주입 (MainFrm::start_capture() 에서 호출)
     void set_session_id(long long session_id, const std::string& start_time);
 
-    // 세션 API 응답 도착 후 session_id만 갱신 (비동기 세션 시작 시 사용)
     void update_session_id(long long session_id);
+    void update_camera_fps(int fps);
 
     // 세션별 클립 저장 경로 갱신
     void set_clip_directory(const std::string& dir);

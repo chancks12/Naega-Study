@@ -122,6 +122,40 @@ void AiTcpClient::run(std::string host,
             if (!kp_opt.has_value()) continue;
             const AnalysisResult kp = kp_opt.value();
 
+            // ── keypoint 선형 보간 ────────────────────────────────────────────
+            // 카메라 fps < 30 이면 AI 서버(30fps 학습 기준)에 맞게 중간 keypoint를
+            // 선형 보간해 채워 넣는다.
+            // 예) 15fps → 실측 1개마다 보간 1개 삽입 → 서버는 30fps 등가로 수신
+            // n_interp: 이번 실측 keypoint 전에 보간해서 삽입할 개수
+            //   = target_fps / camera_fps - 1  (정수 나눗셈, 최솟값 0)
+            {
+                const int cam_fps = camera_fps_.load();
+                constexpr int kTargetFps = 30;
+                const int n_interp = (cam_fps > 0 && cam_fps < kTargetFps)
+                                     ? (kTargetFps / cam_fps - 1) : 0;
+
+                for (int i = 1; i <= n_interp; ++i) {
+                    const float alpha = static_cast<float>(i) / (n_interp + 1);
+                    AnalysisResult interp = prev_kp_;
+                    interp.ear           = prev_kp_.ear           + alpha * (kp.ear           - prev_kp_.ear);
+                    interp.neck_angle    = prev_kp_.neck_angle    + alpha * (kp.neck_angle    - prev_kp_.neck_angle);
+                    interp.shoulder_diff = prev_kp_.shoulder_diff + alpha * (kp.shoulder_diff - prev_kp_.shoulder_diff);
+                    interp.head_yaw      = prev_kp_.head_yaw      + alpha * (kp.head_yaw      - prev_kp_.head_yaw);
+                    interp.head_pitch    = prev_kp_.head_pitch    + alpha * (kp.head_pitch    - prev_kp_.head_pitch);
+                    interp.face_detected = kp.face_detected; // 최신 감지 여부 사용
+                    interp.timestamp_ms  = prev_kp_.timestamp_ms
+                        + static_cast<std::uint64_t>(alpha * static_cast<float>(kp.timestamp_ms - prev_kp_.timestamp_ms));
+
+                    if (!send_keypoint_packet(socket, interp, session_id_.load(), ++frame_id)) {
+                        log_ai_tcp("send(interp) failed; reconnecting");
+                        conn_alive = false;
+                        break;
+                    }
+                }
+                if (!conn_alive) break;
+            }
+            prev_kp_ = kp; // 다음 보간을 위해 현재 keypoint 기억
+
             if (!send_keypoint_packet(socket, kp, session_id_.load(), ++frame_id)) {
                 log_ai_tcp("send failed; reconnecting");
                 conn_alive = false;

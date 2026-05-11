@@ -40,8 +40,10 @@ public:
     void start(const std::string& host, std::uint16_t port, long long session_id, int sample_interval);
     void stop();
 
-    // 세션 API 응답 도착 후 session_id 갱신 (이후 전송 패킷부터 반영)
     void update_session_id(long long session_id) { session_id_.store(session_id); }
+
+    // 카메라 실제 fps 설정 — 30fps 미만이면 keypoint를 선형 보간해 AI 서버로 전송
+    void set_camera_fps(int fps) { camera_fps_.store(fps > 0 ? fps : 30); }
 
     bool is_connected() const { return connected_.load(); }
 
@@ -85,11 +87,14 @@ private:
 
     ResultCallback result_callback_;
 
-    std::mutex       result_mutex_;      // last_result_ / has_last_result_ 보호
-    AnalysisResult   last_result_;       // 서버에서 마지막으로 수신한 분석 결과
+    std::mutex       result_mutex_;
+    AnalysisResult   last_result_;
     bool             has_last_result_ = false;
 
-    std::atomic<long long> session_id_{ 0 };  // update_session_id()로 런타임 갱신 가능
+    AnalysisResult   prev_kp_;           // 선형 보간 기준점 (직전 실측 keypoint)
+
+    std::atomic<long long> session_id_{ 0 };
+    std::atomic<int>       camera_fps_{ 30 }; // 사용자 설정 카메라 fps
     std::atomic_bool       running_{ false };
     std::atomic_bool       connected_{ false };
     std::thread            worker_;

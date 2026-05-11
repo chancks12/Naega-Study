@@ -11,11 +11,11 @@ public:
     explicit CMainFrame(int user_id = 0) noexcept;
     ~CMainFrame() override;
 
-    // HomePanel "분석 시작하기" 클릭 → 캡처 모드 진입
     void start_capture();
-
-    // StudySyncClientView "학습 종료" 클릭 → 메인 탭으로 복귀
     void stop_capture();
+
+    // 설정 패널에서 FPS 변경 → 실행 중인 뷰에 즉시 반영
+    void update_camera_fps(int fps);
 
     int user_id() const { return user_id_; }
 

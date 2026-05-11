@@ -6,6 +6,7 @@
 #define IDD_LOGIN    200
 #define IDD_REGISTER 201
 #define IDD_REVIEW   202
+#define IDD_FPS      203
 
 // ── 로그인 컨트롤 ──────────────────────────────────────────────
 #define IDC_EDIT_EMAIL           1001
@@ -37,6 +38,8 @@
 #define IDC_BTN_START_CAPTURE   301
 #define IDC_BTN_STOP_CAPTURE    302
 #define IDC_BTN_LOGOUT          303
+#define IDC_BTN_FPS_SETTING     304
+#define IDC_EDIT_FPS            1030
 
 #ifndef IDC_STATIC
 #define IDC_STATIC -1

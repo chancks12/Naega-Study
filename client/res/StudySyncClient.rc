@@ -39,6 +39,19 @@ BEGIN
     PUSHBUTTON      "Cancel",         IDCANCEL,           160, 140,  65, 18
 END
 
+// ── FPS 설정 ──────────────────────────────────────────────────
+IDD_FPS DIALOGEX 0, 0, 200, 90
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "카메라 FPS 설정"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT           "카메라 FPS를 입력하세요 (1 ~ 120):",
+                    IDC_STATIC,          10, 12, 180, 12
+    EDITTEXT        IDC_EDIT_FPS,        10, 28, 180, 14, ES_AUTOHSCROLL | ES_NUMBER
+    PUSHBUTTON      "확인",             IDOK,     36, 56, 55, 18
+    PUSHBUTTON      "취소",             IDCANCEL, 108, 56, 55, 18
+END
+
 // ── 복기 화면 ─────────────────────────────────────────────────
 //  480 x 370 DLU (약 720 x 555 px @ 96dpi)
 //

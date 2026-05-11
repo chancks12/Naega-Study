@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "StudySyncClientView.h"
+#include "network/FpsStore.h"
 #include "network/WinHttpClient.h"
 #include "resource.h"
 
@@ -69,6 +70,11 @@ void CStudySyncClientView::update_session_id(long long session_id)
     // AI TCP 클라이언트는 이미 동작 중이므로 재시작 없이 session_id만 갱신
     // 이후 전송 패킷부터 새 session_id가 반영됨
     ai_tcp_client_.update_session_id(session_id);
+}
+
+void CStudySyncClientView::update_camera_fps(int fps)
+{
+    ai_tcp_client_.set_camera_fps(fps);
 }
 
 void CStudySyncClientView::set_clip_directory(const std::string& dir)
@@ -226,6 +232,8 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
                 }
             }
         });
+        // 저장된 카메라 FPS 로드 후 주입 (보간 비율 결정)
+        ai_tcp_client_.set_camera_fps(FpsStore{}.load());
         ai_tcp_client_.start(
             transport_config_.ai_server_host,
             transport_config_.ai_server_port,
