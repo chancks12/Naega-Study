@@ -53,8 +53,14 @@ MYSQL* ConnectionPool::create_connection() {
     }
 
     my_bool reconnect = 1;
-    mysql_options(conn, MYSQL_OPT_RECONNECT, &reconnect);
-    mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8mb4");
+    unsigned int connect_timeout = 3;   // DB 다운 시 핸들러 스레드 무한 블로킹 방지
+    unsigned int read_timeout    = 10;  // 쿼리 응답 대기 상한
+    unsigned int write_timeout   = 10;
+    mysql_options(conn, MYSQL_OPT_RECONNECT,        &reconnect);
+    mysql_options(conn, MYSQL_OPT_CONNECT_TIMEOUT,  &connect_timeout);
+    mysql_options(conn, MYSQL_OPT_READ_TIMEOUT,     &read_timeout);
+    mysql_options(conn, MYSQL_OPT_WRITE_TIMEOUT,    &write_timeout);
+    mysql_options(conn, MYSQL_SET_CHARSET_NAME,     "utf8mb4");
 
     if (!mysql_real_connect(conn, host_.c_str(), user_.c_str(),
                             password_.c_str(), schema_.c_str(),
