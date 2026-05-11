@@ -189,9 +189,12 @@ SOCKET AiTcpClient::connect_to(const std::string& host, std::uint16_t port)
     SOCKET socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socket == INVALID_SOCKET) return INVALID_SOCKET;
 
-    DWORD timeout_ms = 3000;
-    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
-    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+    // SO_RCVTIMEO: 서버가 매 프레임(33ms) 응답하므로 실질 발동 없음 — 연결 완전 단절 감지용
+    // SO_SNDTIMEO: 150프레임(5초) 누적 중 네트워크 지연으로 조기 재연결되지 않도록 여유롭게 설정
+    DWORD rcv_timeout_ms = 10000;
+    DWORD snd_timeout_ms = 8000;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&rcv_timeout_ms), sizeof(rcv_timeout_ms));
+    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&snd_timeout_ms), sizeof(snd_timeout_ms));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
