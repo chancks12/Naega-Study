@@ -41,13 +41,27 @@ AuthResponse AuthApi::parse_auth_response(const HttpResponse& resp)
 {
     AuthResponse auth;
     auth.success = resp.ok();
-    auth.token   = extract_json_string(resp.body, "token");
-    auth.message = extract_json_string(resp.body, "message");
+
+    // 서버가 "token" 또는 "access_token" 둘 중 하나를 사용할 수 있으므로 양쪽 시도
+    auth.token = extract_json_string(resp.body, "token");
+    if (auth.token.empty())
+        auth.token = extract_json_string(resp.body, "access_token");
+
+    // "name" 또는 "message" 양쪽 시도 (서버 구현마다 다를 수 있음)
+    auth.message = extract_json_string(resp.body, "name");
+    if (auth.message.empty())
+        auth.message = extract_json_string(resp.body, "message");
+
     auth.user_id = extract_json_int(resp.body, "user_id", 0);
 
-    if (auth.message.empty() && !auth.success) {
+    if (auth.message.empty() && !auth.success)
         auth.message = extract_json_string(resp.body, "detail");
-    }
+
+    // 디버그: 응답 body와 추출 결과 로깅
+    OutputDebugStringA(("[Auth] parse_auth_response: success=" +
+        std::to_string(auth.success) +
+        " token_len=" + std::to_string(auth.token.size()) +
+        " body_preview=" + resp.body.substr(0, 200) + "\n").c_str());
 
     return auth;
 }
