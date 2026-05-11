@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // 카메라 FPS 설정을 %APPDATA%\StudySync\settings.dat 에 저장/로드.
 class FpsStore {
 public:
