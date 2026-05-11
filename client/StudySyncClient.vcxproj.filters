@@ -1,13 +1,138 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="app"><UniqueIdentifier>{49C71160-A0AB-46F5-A7B8-11D24F390A91}</UniqueIdentifier></Filter>
-    <Filter Include="capture"><UniqueIdentifier>{3E85D4A7-C159-4626-8C81-5564939A64E0}</UniqueIdentifier></Filter>
-    <Filter Include="render"><UniqueIdentifier>{28D846C9-01FD-4DD4-A4B6-638C978B4CD5}</UniqueIdentifier></Filter>
-    <Filter Include="network"><UniqueIdentifier>{04AE21BA-FE6F-4F00-BA63-EFA8C3C9873A}</UniqueIdentifier></Filter>
-    <Filter Include="event"><UniqueIdentifier>{9F5C5535-84C9-4101-AC94-58D0FD7A652D}</UniqueIdentifier></Filter>
-    <Filter Include="model"><UniqueIdentifier>{2B3F2EC6-3263-41A9-A609-613FE59DE7C2}</UniqueIdentifier></Filter>
-    <Filter Include="core"><UniqueIdentifier>{831B224F-3571-48D8-A0D2-C6F946282C29}</UniqueIdentifier></Filter>
-    <Filter Include="res"><UniqueIdentifier>{4B43C39B-8675-4C2D-BC62-611DAE0D4313}</UniqueIdentifier></Filter>
+    <Filter Include="app">
+      <UniqueIdentifier>{49C71160-A0AB-46F5-A7B8-11D24F390A91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="capture">
+      <UniqueIdentifier>{3E85D4A7-C159-4626-8C81-5564939A64E0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render">
+      <UniqueIdentifier>{28D846C9-01FD-4DD4-A4B6-638C978B4CD5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="network">
+      <UniqueIdentifier>{04AE21BA-FE6F-4F00-BA63-EFA8C3C9873A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="event">
+      <UniqueIdentifier>{9F5C5535-84C9-4101-AC94-58D0FD7A652D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="model">
+      <UniqueIdentifier>{2B3F2EC6-3263-41A9-A609-613FE59DE7C2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="core">
+      <UniqueIdentifier>{831B224F-3571-48D8-A0D2-C6F946282C29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="res">
+      <UniqueIdentifier>{4B43C39B-8675-4C2D-BC62-611DAE0D4313}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\analysis\DummyAnalysisGenerator.cpp" />
+    <ClCompile Include="src\analysis\LocalMediaPipePoseAnalyzer.cpp" />
+    <ClCompile Include="src\analysis\ZmqPoseAnalyzer.cpp" />
+    <ClCompile Include="src\alert\AlertDispatchThread.cpp" />
+    <ClCompile Include="src\alert\AlertManager.cpp" />
+    <ClCompile Include="src\app\LoginDlg.cpp" />
+    <ClCompile Include="src\app\MainFrm.cpp" />
+    <ClCompile Include="src\app\ReviewDlg.cpp" />
+    <ClCompile Include="src\app\pch.cpp" />
+    <ClCompile Include="src\app\RegisterDlg.cpp" />
+    <ClCompile Include="src\app\StudySyncClientApp.cpp" />
+    <ClCompile Include="src\app\StudySyncClientView.cpp" />
+    <ClCompile Include="src\capture\CaptureThread.cpp" />
+    <ClCompile Include="src\core\WorkerThreadPool.cpp" />
+    <ClCompile Include="src\event\EventShadowBuffer.cpp" />
+    <ClCompile Include="src\event\PostureEventDetector.cpp" />
+    <ClCompile Include="src\network\AiTcpClient.cpp" />
+    <ClCompile Include="src\network\ConnectionState.cpp" />
+    <ClCompile Include="src\network\ZmqRecvThread.cpp" />
+    <ClCompile Include="src\network\ZmqSendThread.cpp" />
+    <ClCompile Include="src\network\ConsentStore.cpp" />
+    <ClCompile Include="src\network\FeedbackApi.cpp" />
+    <ClCompile Include="src\network\EventUploadThread.cpp" />
+    <ClCompile Include="src\network\HeartbeatClient.cpp" />
+    <ClCompile Include="src\network\ClientTransportConfig.cpp" />
+    <ClCompile Include="src\network\ClientTransportFactory.cpp" />
+    <ClCompile Include="src\network\AuthApi.cpp" />
+    <ClCompile Include="src\network\HttpJsonlLogSink.cpp" />
+    <ClCompile Include="src\network\JsonlBatchUploader.cpp" />
+    <ClCompile Include="src\network\LocalClaimCheckClipStore.cpp" />
+    <ClCompile Include="src\network\LocalClipGarbageCollector.cpp" />
+    <ClCompile Include="src\network\ReconnectPolicy.cpp" />
+    <ClCompile Include="src\network\SessionApi.cpp" />
+    <ClCompile Include="src\network\StatsApi.cpp" />
+    <ClCompile Include="src\network\TokenStore.cpp" />
+    <ClCompile Include="src\network\WinHttpClient.cpp" />
+    <ClCompile Include="src\network\ZmqFrameSender.cpp" />
+    <ClCompile Include="src\render\D2DRenderer.cpp" />
+    <ClCompile Include="src\render\OverlayPainter.cpp" />
+    <ClCompile Include="src\render\RenderThread.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\analysis\DummyAnalysisGenerator.h" />
+    <ClInclude Include="include\analysis\IPoseAnalyzer.h" />
+    <ClInclude Include="include\analysis\LocalMediaPipePoseAnalyzer.h" />
+    <ClInclude Include="include\analysis\ZmqPoseAnalyzer.h" />
+    <ClInclude Include="include\alert\AlertDispatchThread.h" />
+    <ClInclude Include="include\alert\AlertManager.h" />
+    <ClInclude Include="include\alert\AlertQueue.h" />
+    <ClInclude Include="include\capture\CaptureThread.h" />
+    <ClInclude Include="include\core\RingBuffer.h" />
+    <ClInclude Include="include\core\ThreadSafeQueue.h" />
+    <ClInclude Include="include\core\WorkerThreadPool.h" />
+    <ClInclude Include="include\event\EventQueue.h" />
+    <ClInclude Include="include\event\EventShadowBuffer.h" />
+    <ClInclude Include="include\event\PostureEventDetector.h" />
+    <ClInclude Include="include\model\AnalysisResult.h" />
+    <ClInclude Include="include\model\Alert.h" />
+    <ClInclude Include="include\model\AnalysisResultBuffer.h" />
+    <ClInclude Include="include\model\Frame.h" />
+    <ClInclude Include="include\model\PostureEvent.h" />
+    <ClInclude Include="include\model\ReviewEvent.h" />
+    <ClInclude Include="include\model\ReviewEventStore.h" />
+    <ClInclude Include="include\model\ServerStatsSnapshot.h" />
+    <ClInclude Include="include\model\SessionStatsHistory.h" />
+    <ClInclude Include="include\model\ToastBuffer.h" />
+    <ClInclude Include="include\model\User.h" />
+    <ClInclude Include="include\network\ConsentStore.h" />
+    <ClInclude Include="include\network\FeedbackApi.h" />
+    <ClInclude Include="include\network\ConnectionState.h" />
+    <ClInclude Include="include\network\EventUploadThread.h" />
+    <ClInclude Include="include\network\ClientTransportConfig.h" />
+    <ClInclude Include="include\network\ClientTransportFactory.h" />
+    <ClInclude Include="include\network\AiTcpClient.h" />
+    <ClInclude Include="include\network\HeartbeatClient.h" />
+    <ClInclude Include="include\network\HttpJsonlLogSink.h" />
+    <ClInclude Include="include\network\AuthApi.h" />
+    <ClInclude Include="include\network\IEventClipStore.h" />
+    <ClInclude Include="include\network\IFrameSender.h" />
+    <ClInclude Include="include\network\ILogSink.h" />
+    <ClInclude Include="include\network\JsonlBatchUploader.h" />
+    <ClInclude Include="include\network\LocalClaimCheckClipStore.h" />
+    <ClInclude Include="include\network\LocalClipGarbageCollector.h" />
+    <ClInclude Include="include\network\ReconnectPolicy.h" />
+    <ClInclude Include="include\network\StatsApi.h" />
+    <ClInclude Include="include\network\TokenStore.h" />
+    <ClInclude Include="include\network\WinHttpClient.h" />
+    <ClInclude Include="include\network\ZmqFrameSender.h" />
+    <ClInclude Include="include\network\ZmqRecvThread.h" />
+    <ClInclude Include="include\network\ZmqSendThread.h" />
+    <ClInclude Include="include\render\D2DRenderer.h" />
+    <ClInclude Include="include\render\OverlayPainter.h" />
+    <ClInclude Include="include\render\RenderThread.h" />
+    <ClInclude Include="res\resource.h" />
+    <ClInclude Include="src\app\framework.h" />
+    <ClInclude Include="src\app\MainFrm.h" />
+    <ClInclude Include="src\app\pch.h" />
+    <ClInclude Include="src\app\ReviewDlg.h" />
+    <ClInclude Include="src\app\StudySyncClientApp.h" />
+    <ClInclude Include="src\app\StudySyncClientView.h" />
+    <ClInclude Include="src\app\targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="res\StudySyncClient.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="CMakeLists.txt" />
   </ItemGroup>
 </Project>
