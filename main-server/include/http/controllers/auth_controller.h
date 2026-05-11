@@ -1,6 +1,6 @@
 #pragma once
 // ============================================================================
-// auth_controller.h — POST /auth/register, POST /auth/login
+// auth_controller.h — POST /auth/register, POST /auth/login, POST /auth/logout
 // ============================================================================
 
 #include "http/http_server.h"

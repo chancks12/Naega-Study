@@ -27,6 +27,20 @@ void FocusService::on_focus_log_push(const std::any& payload) {
     e.state        = ev.state;
     e.is_absent    = ev.is_absent;
     e.is_drowsy    = ev.is_drowsy;
+    e.has_ear      = ev.has_ear;
+    e.ear          = ev.ear;
+    e.has_neck_angle = ev.has_neck_angle;
+    e.neck_angle   = ev.neck_angle;
+    e.has_shoulder_diff = ev.has_shoulder_diff;
+    e.shoulder_diff = ev.shoulder_diff;
+    e.has_head_yaw = ev.has_head_yaw;
+    e.head_yaw     = ev.head_yaw;
+    e.has_head_pitch = ev.has_head_pitch;
+    e.head_pitch   = ev.head_pitch;
+    e.has_face_detected = ev.has_face_detected;
+    e.face_detected = ev.face_detected;
+    e.has_phone_detected = ev.has_phone_detected;
+    e.phone_detected = ev.phone_detected;
 
     long long row_id = dao_.insert(e);
 

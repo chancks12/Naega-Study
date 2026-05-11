@@ -669,22 +669,37 @@ long long FocusLogDao::insert_in_conn(MYSQL* conn, const Entry& e) {
 
     const char* sql =
         "INSERT INTO focus_logs "
-        "(session_id, ts, timestamp_ms, focus_score, state, is_absent, is_drowsy) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        "(session_id, ts, timestamp_ms, focus_score, state, is_absent, is_drowsy, "
+        "ear, neck_angle, shoulder_diff, head_yaw, head_pitch, face_detected, phone_detected) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     if (mysql_stmt_prepare(stmt, sql, std::strlen(sql)) != 0) {
         log_err_db("FocusLogDao prepare 실패 | %s", mysql_stmt_error(stmt));
         mysql_stmt_close(stmt);
         return -1;
     }
 
-    MYSQL_BIND bind[7]; std::memset(bind, 0, sizeof(bind));
+    MYSQL_BIND bind[14]; std::memset(bind, 0, sizeof(bind));
     long long  v_sid   = e.session_id;
     long long  v_ts_ms = e.timestamp_ms;
     int        v_score = e.focus_score;
     int        v_absent = e.is_absent ? 1 : 0;
     int        v_drowsy = e.is_drowsy ? 1 : 0;
+    float      v_ear = static_cast<float>(e.ear);
+    float      v_neck = static_cast<float>(e.neck_angle);
+    float      v_shoulder = static_cast<float>(e.shoulder_diff);
+    float      v_yaw = static_cast<float>(e.head_yaw);
+    float      v_pitch = static_cast<float>(e.head_pitch);
+    int        v_face = e.face_detected;
+    int        v_phone = e.phone_detected;
     unsigned long l_ts = 0, l_state = 0; my_bool n_ts = 0, n_state = 0;
     my_bool null_ts_ms = (e.timestamp_ms == 0) ? 1 : 0;
+    my_bool null_ear = e.has_ear ? 0 : 1;
+    my_bool null_neck = e.has_neck_angle ? 0 : 1;
+    my_bool null_shoulder = e.has_shoulder_diff ? 0 : 1;
+    my_bool null_yaw = e.has_head_yaw ? 0 : 1;
+    my_bool null_pitch = e.has_head_pitch ? 0 : 1;
+    my_bool null_face = e.has_face_detected ? 0 : 1;
+    my_bool null_phone = e.has_phone_detected ? 0 : 1;
 
     bind_longlong(bind[0], &v_sid);
     bind_string(bind[1], ts_mysql, l_ts, n_ts);
@@ -697,6 +712,27 @@ long long FocusLogDao::insert_in_conn(MYSQL* conn, const Entry& e) {
     bind_string(bind[4], e.state, l_state, n_state, /*nullable_when_empty=*/true);
     bind_long(bind[5], &v_absent);
     bind_long(bind[6], &v_drowsy);
+
+    bind[7].buffer_type = MYSQL_TYPE_FLOAT;
+    bind[7].buffer = &v_ear; bind[7].is_null = &null_ear;
+
+    bind[8].buffer_type = MYSQL_TYPE_FLOAT;
+    bind[8].buffer = &v_neck; bind[8].is_null = &null_neck;
+
+    bind[9].buffer_type = MYSQL_TYPE_FLOAT;
+    bind[9].buffer = &v_shoulder; bind[9].is_null = &null_shoulder;
+
+    bind[10].buffer_type = MYSQL_TYPE_FLOAT;
+    bind[10].buffer = &v_yaw; bind[10].is_null = &null_yaw;
+
+    bind[11].buffer_type = MYSQL_TYPE_FLOAT;
+    bind[11].buffer = &v_pitch; bind[11].is_null = &null_pitch;
+
+    bind_long(bind[12], &v_face);
+    bind[12].is_null = &null_face;
+
+    bind_long(bind[13], &v_phone);
+    bind[13].is_null = &null_phone;
 
     if (mysql_stmt_bind_param(stmt, bind) != 0 || mysql_stmt_execute(stmt) != 0) {
         log_err_db("FocusLogDao execute 실패 | %s", mysql_stmt_error(stmt));

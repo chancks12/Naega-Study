@@ -135,7 +135,7 @@ JWT_SECRET=real-secret ./app/studysync_main_server ../config/config.json
 | `users` | id BIGINT PK, email UNIQUE, password_hash, name, role | role 기본 'user' |
 | `goals` | user_id UNIQUE, daily_goal_min, rest_interval_min, rest_duration_min, updated_at | upsert |
 | `sessions` | user_id, date, start_time, end_time, focus_min FLOAT, avg_focus FLOAT, goal_achieved | end_time NULL = 진행 중 |
-| `focus_logs` | session_id FK, ts, timestamp_ms BIGINT, focus_score INT 0~100, state, is_absent, is_drowsy | CHECK(focus_score 0~100) |
+| `focus_logs` | session_id FK, ts, timestamp_ms BIGINT, focus_score INT 0~100, state, is_absent, is_drowsy, ear, neck_angle, shoulder_diff, head_yaw, head_pitch, face_detected, phone_detected | CHECK(focus_score 0~100) |
 | `posture_logs` | session_id FK, ts, timestamp_ms, neck_angle FLOAT, shoulder_diff FLOAT, posture_ok, vs_baseline | NULL 허용 컬럼 다수 |
 | `posture_events` | event_id UNIQUE, session_id FK, event_type, severity, clip_id, clip_access, clip_ref, retention_days, expires_at_ms | 멱등 INSERT, Claim Check |
 | `train_data` | user_id FK, ts, landmarks_json, label, used_for_training | label IN ('focus','distracted','drowsy') |

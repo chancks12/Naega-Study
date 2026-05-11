@@ -6,7 +6,7 @@
 //
 // 미스매치 흡수 (클라 현재 line 포맷 vs 서버 DB):
 //   - "drowsy"/"absent" (클라 키) → is_drowsy/is_absent (DB)
-//   - "ear" (클라) → DB 컬럼 없음, 무시
+//   - "ear", "head_yaw" 등 분석 특징값 → focus_logs 특징 컬럼에 저장
 //   - session_id: line 마다 필수 (클라 측 합의 후 박아주기로)
 //   - event line 의 reason 만 있음 → event_type/severity 누락 시 서버가 잠정값 채움
 // ============================================================================
@@ -51,6 +51,27 @@ bool parse_analysis_line(const json& obj, long long session_id,
     f.state        = obj.value("state", std::string{});
     f.is_absent    = obj.value("absent",  obj.value("is_absent",  false));
     f.is_drowsy    = obj.value("drowsy",  obj.value("is_drowsy",  false));
+    if (obj.contains("ear") && obj["ear"].is_number()) {
+        f.has_ear = true; f.ear = obj["ear"].get<double>();
+    }
+    if (obj.contains("neck_angle") && obj["neck_angle"].is_number()) {
+        f.has_neck_angle = true; f.neck_angle = obj["neck_angle"].get<double>();
+    }
+    if (obj.contains("shoulder_diff") && obj["shoulder_diff"].is_number()) {
+        f.has_shoulder_diff = true; f.shoulder_diff = obj["shoulder_diff"].get<double>();
+    }
+    if (obj.contains("head_yaw") && obj["head_yaw"].is_number()) {
+        f.has_head_yaw = true; f.head_yaw = obj["head_yaw"].get<double>();
+    }
+    if (obj.contains("head_pitch") && obj["head_pitch"].is_number()) {
+        f.has_head_pitch = true; f.head_pitch = obj["head_pitch"].get<double>();
+    }
+    if (obj.contains("face_detected") && obj["face_detected"].is_number_integer()) {
+        f.has_face_detected = true; f.face_detected = obj["face_detected"].get<int>();
+    }
+    if (obj.contains("phone_detected") && obj["phone_detected"].is_number_integer()) {
+        f.has_phone_detected = true; f.phone_detected = obj["phone_detected"].get<int>();
+    }
 
     p.session_id   = session_id;
     p.ts           = ts;

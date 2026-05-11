@@ -130,6 +130,14 @@ inline std::shared_ptr<spdlog::logger>& spd_extra() {
     return lg;
 }
 
+// 현재 시각 "HH:MM:SS" 문자열 생성 (stdout/stderr prefix 용)
+inline void log_now_hms(char* buf, size_t n) {
+    std::time_t now = std::time(nullptr);
+    std::tm tm{};
+    localtime_r(&now, &tm);
+    std::strftime(buf, n, "%H:%M:%S", &tm);
+}
+
 // ── 공통 출력 ──
 // stdout, 자체 일자별 파일, spdlog extra sink 의 3곳에 같은 메시지 fan-out.
 inline void log_impl(const char* emoji, const char* tag, const char* fmt, va_list args) {
@@ -138,8 +146,11 @@ inline void log_impl(const char* emoji, const char* tag, const char* fmt, va_lis
     va_copy(args_for_file, args);
     va_copy(args_for_spd,  args);
 
+    char ts[16];
+    log_now_hms(ts, sizeof(ts));
+
     // ── ① stdout (터미널 즉시) ──
-    fprintf(stdout, "%s [%-5s] ", emoji, tag);
+    fprintf(stdout, "[%s] %s [%-5s] ", ts, emoji, tag);
     vfprintf(stdout, fmt, args);
     fprintf(stdout, "\n");
     fflush(stdout);
@@ -161,8 +172,11 @@ inline void log_err_impl(const char* tag, const char* fmt, va_list args) {
     va_copy(args_for_file, args);
     va_copy(args_for_spd,  args);
 
+    char ts[16];
+    log_now_hms(ts, sizeof(ts));
+
     // ── ① stderr ──
-    fprintf(stderr, "❌ [%-5s] ", tag);
+    fprintf(stderr, "[%s] ❌ [%-5s] ", ts, tag);
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
     fflush(stderr);

@@ -1,5 +1,5 @@
 // ============================================================================
-// auth_controller.cpp — /auth/register, /auth/login
+// auth_controller.cpp — /auth/register, /auth/login, /auth/logout
 // ============================================================================
 // 클라 스펙 §3-1, §3-2 준수.
 // ============================================================================
@@ -105,6 +105,17 @@ void AuthController::register_routes() {
             log_err_clt("login parse error | %s", e.what());
             send_400(res, "invalid json body");
         }
+    });
+
+    // ── POST /auth/logout ─────────────────────────────────────────
+    // JWT 는 서버 세션 저장소 없이 stateless 로 검증하므로 서버에서 폐기할 토큰 상태는 없다.
+    // 클라이언트가 저장 토큰을 지우기 전에 호출할 수 있도록 성공 응답만 제공한다.
+    svr.Post("/auth/logout",
+             [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, 200, {
+            {"code",    200},
+            {"message", "logout ok"}
+        });
     });
 }
 

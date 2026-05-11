@@ -99,6 +99,20 @@ struct FocusLogPushEvent {
     std::string state;              // "focus" / "distracted" / "drowsy" 등
     bool        is_absent    = false;
     bool        is_drowsy    = false;
+    bool        has_ear = false;
+    double      ear = 0.0;
+    bool        has_neck_angle = false;
+    double      neck_angle = 0.0;
+    bool        has_shoulder_diff = false;
+    double      shoulder_diff = 0.0;
+    bool        has_head_yaw = false;
+    double      head_yaw = 0.0;
+    bool        has_head_pitch = false;
+    double      head_pitch = 0.0;
+    bool        has_face_detected = false;
+    int         face_detected = 0;
+    bool        has_phone_detected = false;
+    int         phone_detected = 0;
     std::string sender_addr;
 };
 

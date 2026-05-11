@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
     else if (const char* env = std::getenv("CONFIG_PATH")) config_path = env;
 
     if (!Config::instance().load(config_path)) {
-        std::cerr << "설정 로드 실패: " << config_path << std::endl;
+        log_err_main("설정 로드 실패: %s", config_path.c_str());
         return 1;
     }
 
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     // 3) DB 풀
     ConnectionPool db_pool(db_host, db_user, db_password, db_schema, 3306, db_pool_size);
     if (!db_pool.init()) {
-        std::cerr << "DB 커넥션 풀 초기화 실패" << std::endl;
+        log_err_main("DB 커넥션 풀 초기화 실패");
         return 1;
     }
 
@@ -172,8 +172,8 @@ int main(int argc, char* argv[]) {
     SessionCleanupWorker session_cleanup(db_pool, cleanup_interval, cleanup_stale_hr);
     session_cleanup.start();
 
-    std::cout << "🔄 [MAIN ] StudySync 메인서버 시작 완료 | TCP=" << ai_port
-              << " HTTP=" << http_port << " | Ctrl+C 종료" << std::endl;
+    log_main("StudySync 메인서버 시작 완료 | TCP=%d HTTP=%d | Ctrl+C 종료",
+             ai_port, http_port);
 
     auto last_event_bus_log = std::chrono::steady_clock::now();
     while (!g_should_exit.load()) {
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::cout << "🔄 [MAIN ] 서버 종료 중..." << std::endl;
+    log_main("서버 종료 중...");
     session_cleanup.stop();
     health_checker.stop();
     http_server.stop();

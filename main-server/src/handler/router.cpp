@@ -114,6 +114,20 @@ void Router::on_packet_received(const std::any& payload) {
             ev.state        = extract_str(packet.json_payload, "state");
             ev.is_absent    = extract_bool(packet.json_payload, "is_absent");
             ev.is_drowsy    = extract_bool(packet.json_payload, "is_drowsy");
+            ev.has_ear      = has_key(packet.json_payload, "ear");
+            ev.ear          = extract_double(packet.json_payload, "ear");
+            ev.has_neck_angle = has_key(packet.json_payload, "neck_angle");
+            ev.neck_angle   = extract_double(packet.json_payload, "neck_angle");
+            ev.has_shoulder_diff = has_key(packet.json_payload, "shoulder_diff");
+            ev.shoulder_diff = extract_double(packet.json_payload, "shoulder_diff");
+            ev.has_head_yaw = has_key(packet.json_payload, "head_yaw");
+            ev.head_yaw     = extract_double(packet.json_payload, "head_yaw");
+            ev.has_head_pitch = has_key(packet.json_payload, "head_pitch");
+            ev.head_pitch   = extract_double(packet.json_payload, "head_pitch");
+            ev.has_face_detected = has_key(packet.json_payload, "face_detected");
+            ev.face_detected = extract_int(packet.json_payload, "face_detected");
+            ev.has_phone_detected = has_key(packet.json_payload, "phone_detected");
+            ev.phone_detected = extract_int(packet.json_payload, "phone_detected");
             ev.sender_addr  = packet.remote_addr;
             if (!event_bus_.publish_critical(EventType::FOCUS_LOG_PUSH_RECEIVED, ev)) {
                 log_err_route("FOCUS_LOG_PUSH 큐잉 실패 | req=%s", ev.request_id.c_str());
