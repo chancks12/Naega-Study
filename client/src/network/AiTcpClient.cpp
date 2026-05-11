@@ -339,12 +339,17 @@ std::string AiTcpClient::now_iso8601()
 
 std::string AiTcpClient::extract_string(const std::string& json, const std::string& key)
 {
-    const std::string pattern = "\"" + key + "\":\"";
-    const auto pos = json.find(pattern);
+    const std::string pattern = "\"" + key + "\":";
+    auto pos = json.find(pattern);
     if (pos == std::string::npos) return {};
 
+    pos += pattern.size();
+    while (pos < json.size() && json[pos] == ' ') ++pos; // 콜론 뒤 공백 허용
+    if (pos >= json.size() || json[pos] != '"') return {};
+    ++pos; // 여는 따옴표 건너뜀
+
     std::string value;
-    for (std::size_t i = pos + pattern.size(); i < json.size(); ++i) {
+    for (std::size_t i = pos; i < json.size(); ++i) {
         if (json[i] == '\\' && i + 1 < json.size()) {
             value += json[++i];
         } else if (json[i] == '"') {
