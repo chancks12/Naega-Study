@@ -19,8 +19,9 @@ public:
 
     int user_id() const { return user_id_; }
 
-    static constexpr UINT WM_STOP_CAPTURE    = WM_APP + 1;
-    static constexpr UINT WM_SESSION_STARTED = WM_APP + 2;
+    static constexpr UINT WM_STOP_CAPTURE          = WM_APP + 1;
+    static constexpr UINT WM_SESSION_STARTED       = WM_APP + 2;
+    static constexpr UINT WM_DESTROY_CAPTURE_VIEW  = WM_APP + 3;
 
 protected:
     afx_msg int    OnCreate(LPCREATESTRUCT lpCreateStruct);
@@ -30,6 +31,7 @@ protected:
     afx_msg void   OnBnClickedStop();
     afx_msg LRESULT OnStopCaptureMsg(WPARAM, LPARAM);
     afx_msg LRESULT OnSessionStarted(WPARAM, LPARAM);
+    afx_msg LRESULT OnDestroyCaptureView(WPARAM, LPARAM);
     DECLARE_MESSAGE_MAP()
 
 private:

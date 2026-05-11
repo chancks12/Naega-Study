@@ -25,6 +25,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_BN_CLICKED(IDC_BTN_STOP_CAPTURE, OnBnClickedStop)
     ON_MESSAGE(WM_STOP_CAPTURE, OnStopCaptureMsg)
     ON_MESSAGE(WM_SESSION_STARTED, OnSessionStarted)
+    ON_MESSAGE(WM_DESTROY_CAPTURE_VIEW, OnDestroyCaptureView)
 END_MESSAGE_MAP()
 
 static constexpr int kTabH = 28;
@@ -232,7 +233,7 @@ void CMainFrame::stop_capture()
         font_stop_.DeleteObject();
     }
 
-    // capturing_ 먼저 해제 + 탭 UI 복원 → DestroyWindow 스레드 join 전에 화면 전환
+    // 메인 화면 즉시 복원 — 스레드 정리 전에 UI 전환해서 프리징 방지
     capturing_ = false;
     tab_ctrl_.ShowWindow(SW_SHOW);
     if (panels_[active_tab_]) panels_[active_tab_]->ShowWindow(SW_SHOW);
@@ -243,10 +244,28 @@ void CMainFrame::stop_capture()
     }
     RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 
-    // 캡처 뷰 종료 (OnDestroy → 세션 종료 API + 스레드 정리)
-    capture_view_->DestroyWindow();
-    delete capture_view_;
+    // 스레드 정리를 백그라운드에서 수행 — UI 스레드 블로킹 없음
+    // 완료 후 WM_DESTROY_CAPTURE_VIEW 메시지로 DestroyWindow 요청
+    CStudySyncClientView* view = capture_view_;
     capture_view_ = nullptr;
+
+    const HWND frame_hwnd = m_hWnd;
+    std::thread([view, frame_hwnd]() {
+        view->stop_all_threads();
+        ::PostMessage(frame_hwnd, WM_DESTROY_CAPTURE_VIEW,
+                      0, reinterpret_cast<LPARAM>(view));
+    }).detach();
+}
+
+// 백그라운드 스레드가 모든 스레드 정리를 완료한 뒤 UI 스레드에서 호출
+LRESULT CMainFrame::OnDestroyCaptureView(WPARAM, LPARAM lParam)
+{
+    CStudySyncClientView* view = reinterpret_cast<CStudySyncClientView*>(lParam);
+    if (view) {
+        view->DestroyWindow();
+        delete view;
+    }
+    return 0;
 }
 
 // ── 버튼 핸들러 ─────────────────────────────────────────────

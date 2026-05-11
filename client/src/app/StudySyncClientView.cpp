@@ -248,8 +248,31 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
     return 0;
 }
 
+// 모든 워커 스레드 정지 — 백그라운드 스레드에서 호출해 UI 블로킹 방지
+void CStudySyncClientView::stop_all_threads()
+{
+    if (threads_stopped_.exchange(true)) return;
+
+    if (transports_.log_sink) transports_.log_sink->flush();
+
+    clip_garbage_collector_.stop();
+    main_heartbeat_.stop();
+    ai_heartbeat_.stop();
+    alert_dispatch_thread_.stop();
+    event_upload_thread_.stop();
+    if (transport_config_.use_dummy_ai) {
+        dummy_generator_.stop();
+    } else {
+        ai_tcp_client_.stop();
+    }
+    render_thread_.stop();
+    capture_thread_.stop();
+    worker_pool_.stop();
+}
+
 void CStudySyncClientView::OnDestroy()
 {
+    // 세션 종료 API — 비동기
     if (session_id_ > 0) {
         const std::string end_time = current_iso8601();
         const long long sid = session_id_;
@@ -269,26 +292,14 @@ void CStudySyncClientView::OnDestroy()
         }).detach();
     }
 
+    // 타이머는 UI 스레드에서만 해제 가능
     KillTimer(IDT_LOG_FLUSH);
     KillTimer(IDT_CALIB);
     KillTimer(IDT_CALIB_HIDE);
     KillTimer(IDT_STATS_FETCH);
 
-    if (transports_.log_sink) transports_.log_sink->flush();
-
-    clip_garbage_collector_.stop();
-    main_heartbeat_.stop();
-    ai_heartbeat_.stop();
-    alert_dispatch_thread_.stop();
-    event_upload_thread_.stop();
-    if (transport_config_.use_dummy_ai) {
-        dummy_generator_.stop();
-    } else {
-        ai_tcp_client_.stop();
-    }
-    render_thread_.stop();
-    capture_thread_.stop();
-    worker_pool_.stop();
+    // stop_all_threads()가 백그라운드에서 이미 완료된 경우 재호출 건너뜀
+    stop_all_threads();
 
     CWnd::OnDestroy();
 }

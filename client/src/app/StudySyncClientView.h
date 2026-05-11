@@ -43,6 +43,10 @@ public:
     // 세션별 클립 저장 경로 갱신
     void set_clip_directory(const std::string& dir);
 
+    // 모든 워커 스레드 정지 (백그라운드 스레드에서 호출 가능)
+    // 완료 후 UI 스레드에서 DestroyWindow()를 호출해야 함
+    void stop_all_threads();
+
     // 학습 종료 콜백 — "학습 종료" 버튼 클릭 시 MainFrm::stop_capture() 호출
     void set_stop_callback(std::function<void()> cb) { stop_cb_ = std::move(cb); }
 
@@ -106,5 +110,6 @@ private:
     LocalClipGarbageCollector clip_garbage_collector_;
 
     std::function<void()> stop_cb_;
-    std::string           last_ai_state_;   // AI 서버 마지막 state (중복 알림 방지)
+    std::string           last_ai_state_;     // AI 서버 마지막 state (중복 알림 방지)
+    std::atomic_bool      threads_stopped_{ false }; // stop_all_threads() 완료 여부
 };
