@@ -5,6 +5,7 @@
 #include <onnxruntime_cxx_api.h>
 #include <opencv2/objdetect.hpp>
 #include <memory>
+#include <string>
 #include <vector>
 
 // MediaPipe Pose + Face Mesh 기반 keypoint 추출기.
@@ -29,16 +30,21 @@ private:
     void   compute_head_pose(const std::vector<float>& lm468,
                              int crop_w, int crop_h,
                              double& yaw, double& pitch) const;
-    double compute_neck_angle(const std::vector<float>& lm195,
-                              int frame_w, int frame_h) const;
-    double compute_shoulder_diff(const std::vector<float>& lm195,
-                                 int frame_h) const;
+    // stride: 랜드마크당 float 수 (3=x,y,z / 4=x,y,z,vis / 5=x,y,z,vis,pres)
+    double compute_neck_angle(const std::vector<float>& lm,
+                              int stride, int frame_w, int frame_h) const;
+    double compute_shoulder_diff(const std::vector<float>& lm,
+                                 int stride, int frame_h) const;
 
     // OrtEnv는 Session보다 먼저 생성되고 나중에 소멸되어야 한다
     Ort::Env            ort_env_{ ORT_LOGGING_LEVEL_WARNING, "StudySync" };
     Ort::SessionOptions ort_opts_;
     std::unique_ptr<Ort::Session> face_session_;
     std::unique_ptr<Ort::Session> pose_session_;
+
+    // initialize()에서 열거한 실제 포즈 모델 출력 노드 이름
+    std::string pose_out0_name_;
+    std::string pose_out1_name_;
 
     // 얼굴 위치 감지 (Haar cascade) → crop 영역 계산용
     cv::CascadeClassifier face_cascade_;

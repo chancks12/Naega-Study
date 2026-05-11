@@ -61,6 +61,21 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         return false;
     }
 
+    // 실제 포즈 모델 출력 노드 이름을 열거해 저장 — 하드코딩 의존 제거
+    {
+        Ort::AllocatorWithDefaultOptions alloc;
+        const size_t n_out = pose_session_->GetOutputCount();
+        for (size_t i = 0; i < n_out; ++i) {
+            auto name_alloc = pose_session_->GetOutputNameAllocated(i, alloc);
+            const std::string name(name_alloc.get());
+            OutputDebugStringA(("[LocalPose] pose output[" + std::to_string(i) + "]: " + name + "\n").c_str());
+            if (i == 0) pose_out0_name_ = name;
+            else if (i == 1) pose_out1_name_ = name;
+        }
+        if (pose_out0_name_.empty()) pose_out0_name_ = "Identity";
+        if (pose_out1_name_.empty()) pose_out1_name_ = "Identity_1";
+    }
+
     // 얼굴 위치 감지용 Haar (landmark 정확도에는 영향 없음)
     face_cascade_.load("C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml");
     if (face_cascade_.empty()) {
@@ -148,22 +163,39 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         auto tensor = Ort::Value::CreateTensor<float>(
             mem_info, flat.data(), flat.size(), shape.data(), 4);
 
-        const char* in_names[]  = {"input_1"};
-        const char* out_names[] = {"Identity", "Identity_1"};
+        const char* in_names[] = {"input_1"};
+        const char* out_names[2] = { pose_out0_name_.c_str(), pose_out1_name_.c_str() };
 
         try {
             auto outs = pose_session_->Run(
                 Ort::RunOptions{nullptr}, in_names, &tensor, 1, out_names, 2);
 
-            const float conf = outs[1].GetTensorData<float>()[0];
-            if (conf > 0.5f) {
-                const float* lm = outs[0].GetTensorData<float>();
-                const std::vector<float> lm195(lm, lm + 195);
-                const double raw_neck = compute_neck_angle(lm195, body_crop.width, body_crop.height);
-                // 90° 초과는 물리적으로 불가능한 앉은 자세 → 랜드마크 오검출로 간주
-                if (raw_neck <= 90.0) {
-                    result.neck_angle    = raw_neck;
-                    result.shoulder_diff = compute_shoulder_diff(lm195, body_crop.height);
+            // 얼굴 모델과 동일하게 raw logit → sigmoid 변환 후 임계값 비교
+            const float raw_flag = outs[1].GetTensorData<float>()[0];
+            const float conf = 1.0f / (1.0f + std::exp(-raw_flag));
+
+            OutputDebugStringA(("[LocalPose] pose flag=" + std::to_string(raw_flag)
+                                + " conf=" + std::to_string(conf) + "\n").c_str());
+
+            if (conf > 0.3f) {
+                const float* lm_ptr = outs[0].GetTensorData<float>();
+                const size_t elem_count = outs[0].GetTensorTypeAndShapeInfo().GetElementCount();
+
+                // 랜드마크당 값 수 자동 감지 (MediaPipe 버전마다 3·4·5 다름)
+                // landmark 12 (right_shoulder)까지 최소 elem_count 필요
+                int stride = 3;
+                if      (elem_count >= static_cast<size_t>(33 * 5)) stride = 5;
+                else if (elem_count >= static_cast<size_t>(33 * 4)) stride = 4;
+
+                const size_t min_needed = static_cast<size_t>(12 * stride + stride);
+                if (elem_count >= min_needed) {
+                    const std::vector<float> lm(lm_ptr, lm_ptr + elem_count);
+                    const double raw_neck = compute_neck_angle(lm, stride, body_crop.width, body_crop.height);
+                    // 160° 초과만 물리적 불가능으로 간주 (90° 기준은 너무 엄격)
+                    if (raw_neck <= 160.0) {
+                        result.neck_angle    = raw_neck;
+                        result.shoulder_diff = compute_shoulder_diff(lm, stride, body_crop.height);
+                    }
                 }
             }
         } catch (const Ort::Exception& e) {
@@ -303,15 +335,16 @@ void LocalMediaPipePoseAnalyzer::compute_head_pose(
 // ── neck_angle ─────────────────────────────────────────────────────────
 
 double LocalMediaPipePoseAnalyzer::compute_neck_angle(
-    const std::vector<float>& lm, int frame_w, int frame_h) const
+    const std::vector<float>& lm, int stride, int frame_w, int frame_h) const
 {
     const float sx = static_cast<float>(frame_w) / 256.0f;
     const float sy = static_cast<float>(frame_h) / 256.0f;
 
-    const float ear_x = (lm[7 * 3]      + lm[8 * 3])      / 2.0f * sx;
-    const float ear_y = (lm[7 * 3 + 1]  + lm[8 * 3 + 1])  / 2.0f * sy;
-    const float sh_x  = (lm[11 * 3]     + lm[12 * 3])     / 2.0f * sx;
-    const float sh_y  = (lm[11 * 3 + 1] + lm[12 * 3 + 1]) / 2.0f * sy;
+    // 7=left_ear, 8=right_ear, 11=left_shoulder, 12=right_shoulder
+    const float ear_x = (lm[7 * stride]     + lm[8 * stride])     / 2.0f * sx;
+    const float ear_y = (lm[7 * stride + 1] + lm[8 * stride + 1]) / 2.0f * sy;
+    const float sh_x  = (lm[11 * stride]    + lm[12 * stride])    / 2.0f * sx;
+    const float sh_y  = (lm[11 * stride + 1]+ lm[12 * stride + 1])/ 2.0f * sy;
 
     const float dx = ear_x - sh_x;
     const float dy = sh_y  - ear_y;  // y축 반전 (이미지 좌표계)
@@ -321,10 +354,10 @@ double LocalMediaPipePoseAnalyzer::compute_neck_angle(
 // ── shoulder_diff ───────────────────────────────────────────────────────
 
 double LocalMediaPipePoseAnalyzer::compute_shoulder_diff(
-    const std::vector<float>& lm, int frame_h) const
+    const std::vector<float>& lm, int stride, int frame_h) const
 {
     const float sy = static_cast<float>(frame_h) / 256.0f;
-    return std::abs(lm[11 * 3 + 1] - lm[12 * 3 + 1]) * sy;
+    return std::abs(lm[11 * stride + 1] - lm[12 * stride + 1]) * sy;
 }
 
 // ── 종료 ───────────────────────────────────────────────────────────────
