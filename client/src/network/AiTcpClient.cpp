@@ -172,9 +172,11 @@ void AiTcpClient::run(std::string host,
             // UI 갱신: 최신 keypoint + 마지막으로 수신한 AI state 합성
             // 서버 응답이 아직 없으면 keypoint 수치만으로 표시
             AnalysisResult display = kp;
+            bool ai_has_responded = false;
             {
                 std::lock_guard<std::mutex> lock(result_mutex_);
                 if (has_last_result_) {
+                    ai_has_responded      = true;
                     display               = last_result_;
                     display.ear           = kp.ear;
                     display.neck_angle    = kp.neck_angle;
@@ -187,7 +189,13 @@ void AiTcpClient::run(std::string host,
             }
 
             result_buffer_.update(display);
-            detector_.feed(display, shadow_buffer_);
+
+            // 이벤트 감지: AI 서버가 응답하기 전에는 state를 비워 로컬 임계값 경로 사용
+            // AI 응답 전 local state(프레임마다 바뀜)를 그대로 넘기면 이벤트 폭주
+            AnalysisResult ev = display;
+            if (!ai_has_responded) ev.state.clear();
+            detector_.feed(ev, shadow_buffer_);
+
             if (result_callback_) result_callback_(display);
         }
 

@@ -50,4 +50,8 @@ private:
     std::atomic<int> camera_fps_{ 30 };
 
     std::optional<PendingEvent> pending_; // post-roll 대기 중인 이벤트
+
+    // 이벤트 최소 발화 간격 (AI 서버 추론 주기 5초에 맞춤)
+    std::uint64_t last_event_ms_ = 0;
+    static constexpr std::uint64_t kMinEventIntervalMs = 5000;
 };

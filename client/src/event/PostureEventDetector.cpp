@@ -36,15 +36,18 @@ void PostureEventDetector::feed(const AnalysisResult& result, const EventShadowB
     }
 
     // ── 상태 기반 이벤트 트리거 ────────────────────────────────────
+    // state는 AI 서버 응답 시에만 비어있지 않음 (local kp.state는 feed 전에 클리어됨)
     if (!result.state.empty()) {
         const std::string previous = last_state_;
         if (previous != result.state) {
             last_state_ = result.state;
-            event_cooldown_ = false;
 
             if (result.state == "drowsy" || result.state == "distracted" || result.state == "absent") {
                 const std::string reason = reason_from_state(previous, result.state);
                 schedule_event(event_type_from_state(result.state), reason.c_str(), result);
+            } else {
+                // "focus" 등 정상 상태로 전환 시에만 쿨다운 해제
+                event_cooldown_ = false;
             }
         }
         return;
@@ -78,16 +81,21 @@ void PostureEventDetector::reset_cooldown()
 
 void PostureEventDetector::schedule_event(PostureEventType type, const char* reason, const AnalysisResult& result)
 {
-    event_cooldown_ = true;
-
-    const int fps = camera_fps_.load();
-    const int post_roll = fps; // 1초
-
     const std::uint64_t ts = result.timestamp_ms > 0
         ? result.timestamp_ms
         : static_cast<std::uint64_t>(
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::system_clock::now().time_since_epoch()).count());
+
+    // AI 서버 추론 주기(5초)보다 빠르게 이벤트가 발화되지 않도록 최소 간격 보장
+    if (last_event_ms_ > 0 && ts - last_event_ms_ < kMinEventIntervalMs)
+        return;
+
+    event_cooldown_ = true;
+    last_event_ms_  = ts;
+
+    const int fps = camera_fps_.load();
+    const int post_roll = fps; // 1초
 
     pending_ = PendingEvent{ type, ts, reason, result.confidence, post_roll };
 }
