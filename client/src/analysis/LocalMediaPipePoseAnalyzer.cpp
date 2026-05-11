@@ -102,7 +102,9 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     Ort::MemoryInfo mem_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // ── 1. 얼굴 bbox 감지 (포즈보다 먼저 — 사용자 위치 기준 크롭을 위해) ──
+    // ── 1. 얼굴 bbox 감지 + EMA 스무딩 ────────────────────────────────────
+    // Haar 검출 결과를 EMA로 평활화해 body_crop 흔들림을 최소화한다.
+    // 검출 실패 시 EMA 값을 유지(이전 위치 사용) — 완전 낙폭 방지
     cv::Rect face_rect;
     {
         cv::Mat gray;
@@ -113,23 +115,33 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             std::vector<cv::Rect> faces;
             face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
             if (!faces.empty()) {
-                // 가장 큰(= 카메라에 가장 가까운) 얼굴만 선택
-                face_rect = *std::max_element(faces.begin(), faces.end(),
-                    [](const cv::Rect& a, const cv::Rect& b){
-                        return a.area() < b.area();
-                    });
+                const cv::Rect best = *std::max_element(faces.begin(), faces.end(),
+                    [](const cv::Rect& a, const cv::Rect& b){ return a.area() < b.area(); });
+                const cv::Rect2f bf(static_cast<float>(best.x),   static_cast<float>(best.y),
+                                    static_cast<float>(best.width), static_cast<float>(best.height));
+                constexpr float kA = 0.25f; // EMA 가중치: 낮을수록 더 부드럽게
+                // ema_face_rect_ 의 area==0 이 초기화 미완료 신호
+                if (ema_face_rect_.area() == 0.0f) {
+                    ema_face_rect_ = bf;
+                } else {
+                    ema_face_rect_.x      = kA * bf.x      + (1.f - kA) * ema_face_rect_.x;
+                    ema_face_rect_.y      = kA * bf.y      + (1.f - kA) * ema_face_rect_.y;
+                    ema_face_rect_.width  = kA * bf.width  + (1.f - kA) * ema_face_rect_.width;
+                    ema_face_rect_.height = kA * bf.height + (1.f - kA) * ema_face_rect_.height;
+                }
             }
         }
 
-        // Haar 실패 시: 이전에 성공한 위치 → 그것도 없으면 화면 중앙 상단
-        if (face_rect.empty()) {
-            if (!last_good_face_rect_.empty()) {
-                face_rect = last_good_face_rect_;
-            } else {
-                face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
-            }
+        if (ema_face_rect_.area() > 0.0f) {
+            // EMA 결과를 정수 좌표로 변환 + 프레임 경계 보정
+            const int rx = std::max(0, static_cast<int>(ema_face_rect_.x));
+            const int ry = std::max(0, static_cast<int>(ema_face_rect_.y));
+            const int rw = std::min(W - rx, static_cast<int>(ema_face_rect_.width));
+            const int rh = std::min(H - ry, static_cast<int>(ema_face_rect_.height));
+            face_rect = (rw > 0 && rh > 0) ? cv::Rect(rx, ry, rw, rh)
+                                             : cv::Rect(W / 4, 0, W / 2, H / 2);
         } else {
-            last_good_face_rect_ = face_rect;
+            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
         }
     }
 
@@ -190,11 +202,22 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                 const size_t min_needed = static_cast<size_t>(12 * stride + stride);
                 if (elem_count >= min_needed) {
                     const std::vector<float> lm(lm_ptr, lm_ptr + elem_count);
-                    const double raw_neck = compute_neck_angle(lm, stride, body_crop.width, body_crop.height);
+                    const double raw_neck  = compute_neck_angle(lm, stride, body_crop.width, body_crop.height);
+                    const double raw_sdiff = compute_shoulder_diff(lm, stride, body_crop.height);
                     // 160° 초과만 물리적 불가능으로 간주 (90° 기준은 너무 엄격)
                     if (raw_neck <= 160.0) {
-                        result.neck_angle    = raw_neck;
-                        result.shoulder_diff = compute_shoulder_diff(lm, stride, body_crop.height);
+                        // EMA로 프레임 간 수치 평활화 — 가만히 있어도 튀는 현상 억제
+                        constexpr double kB = 0.2; // 낮을수록 더 부드럽게 (0.2 ≈ 5프레임 평균)
+                        if (!has_ema_) {
+                            ema_neck_angle_    = raw_neck;
+                            ema_shoulder_diff_ = raw_sdiff;
+                            has_ema_           = true;
+                        } else {
+                            ema_neck_angle_    = kB * raw_neck  + (1.0 - kB) * ema_neck_angle_;
+                            ema_shoulder_diff_ = kB * raw_sdiff + (1.0 - kB) * ema_shoulder_diff_;
+                        }
+                        result.neck_angle    = ema_neck_angle_;
+                        result.shoulder_diff = ema_shoulder_diff_;
                     }
                 }
             }

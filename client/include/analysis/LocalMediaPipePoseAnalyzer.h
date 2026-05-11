@@ -49,9 +49,12 @@ private:
     // 얼굴 위치 감지 (Haar cascade) → crop 영역 계산용
     cv::CascadeClassifier face_cascade_;
 
-    // 이전 프레임에서 마지막으로 Haar이 성공한 얼굴 영역
-    // Haar 실패 시 이 값을 fallback으로 사용 (맹목적 화면 중앙보다 정확)
-    cv::Rect last_good_face_rect_;
+    // EMA-smoothed 얼굴 위치 (Haar 성공 프레임마다 갱신, 실패 시 유지)
+    // → body_crop 안정화 → 포즈 모델 입력 안정화
+    cv::Rect2f ema_face_rect_;
+    double     ema_neck_angle_    = 0.0;
+    double     ema_shoulder_diff_ = 0.0;
+    bool       has_ema_           = false; // EMA 초기화 완료 여부
 
     bool initialized_ = false;
 };
