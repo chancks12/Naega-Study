@@ -41,7 +41,7 @@ AuthResponse AuthApi::parse_auth_response(const HttpResponse& resp)
 {
     AuthResponse auth;
     auth.success = resp.ok();
-    auth.token   = extract_json_string(resp.body, "access_token");
+    auth.token   = extract_json_string(resp.body, "token");
     auth.message = extract_json_string(resp.body, "message");
     auth.user_id = extract_json_int(resp.body, "user_id", 0);
 
@@ -54,15 +54,17 @@ AuthResponse AuthApi::parse_auth_response(const HttpResponse& resp)
 
 std::string AuthApi::extract_json_string(const std::string& json, const std::string& key)
 {
-    std::string pattern = "\"" + key + "\":\"";
+    const std::string pattern = "\"" + key + "\":";
     auto pos = json.find(pattern);
-    if (pos == std::string::npos) {
-        return {};
-    }
+    if (pos == std::string::npos) return {};
 
-    auto start = pos + pattern.size();
+    pos += pattern.size();
+    while (pos < json.size() && json[pos] == ' ') ++pos;
+    if (pos >= json.size() || json[pos] != '"') return {};
+    ++pos; // 여는 따옴표 건너뜀
+
     std::string result;
-    for (auto i = start; i < json.size(); ++i) {
+    for (auto i = pos; i < json.size(); ++i) {
         if (json[i] == '\\' && i + 1 < json.size()) {
             result += json[++i];
         } else if (json[i] == '"') {

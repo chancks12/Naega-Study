@@ -107,12 +107,17 @@ bool SessionApi::extract_bool(const std::string& json, const std::string& key)
 
 std::string SessionApi::extract_str(const std::string& json, const std::string& key)
 {
-    const std::string pat = "\"" + key + "\":\"";
+    const std::string pat = "\"" + key + "\":";
     auto pos = json.find(pat);
     if (pos == std::string::npos) return {};
 
+    pos += pat.size();
+    while (pos < json.size() && json[pos] == ' ') ++pos;
+    if (pos >= json.size() || json[pos] != '"') return {};
+    ++pos;
+
     std::string result;
-    for (auto i = pos + pat.size(); i < json.size(); ++i) {
+    for (auto i = pos; i < json.size(); ++i) {
         if (json[i] == '\\' && i + 1 < json.size()) result += json[++i];
         else if (json[i] == '"') break;
         else result += json[i];
