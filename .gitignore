@@ -38,3 +38,4 @@ build/
 # CMake build directory for main-server (FetchContent deps + obj + binary)
 main-server/app/*
 !main-server/app/.gitkeep
+client/models/*.bak
