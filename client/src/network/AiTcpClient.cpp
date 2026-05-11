@@ -50,6 +50,13 @@ AiTcpClient::~AiTcpClient()
     WSACleanup();
 }
 
+void AiTcpClient::set_camera_fps(int fps)
+{
+    const int validated = fps > 0 ? fps : 30;
+    camera_fps_.store(validated);
+    detector_.set_camera_fps(validated);
+}
+
 void AiTcpClient::start(const std::string& host,
                         std::uint16_t port,
                         long long session_id,

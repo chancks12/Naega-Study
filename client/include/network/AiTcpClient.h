@@ -42,8 +42,8 @@ public:
 
     void update_session_id(long long session_id) { session_id_.store(session_id); }
 
-    // 카메라 실제 fps 설정 — 30fps 미만이면 keypoint를 선형 보간해 AI 서버로 전송
-    void set_camera_fps(int fps) { camera_fps_.store(fps > 0 ? fps : 30); }
+    // 카메라 실제 fps 설정 — keypoint 보간 비율 및 클립 윈도우(7초) 계산에 사용
+    void set_camera_fps(int fps);
 
     bool is_connected() const { return connected_.load(); }
 

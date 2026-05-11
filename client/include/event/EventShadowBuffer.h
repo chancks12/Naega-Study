@@ -12,6 +12,6 @@ public:
     std::vector<Frame> snapshot(std::size_t window_size = 15) const;
 
 private:
-    RingBuffer<Frame, 60> buf_;
+    RingBuffer<Frame, 300> buf_; // 10초@30fps / 20초@15fps
 };
 

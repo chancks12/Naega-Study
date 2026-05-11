@@ -81,10 +81,11 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
 
     if (first_valid) {
         const cv::Size frame_size(first_valid->cols, first_valid->rows);
+        const double write_fps = event.camera_fps > 0 ? static_cast<double>(event.camera_fps) : 30.0;
         cv::VideoWriter writer(
             mp4_path.string(),
             cv::VideoWriter::fourcc('m', 'p', '4', 'v'),
-            30.0,
+            write_fps,
             frame_size);
 
         if (writer.isOpened()) {
