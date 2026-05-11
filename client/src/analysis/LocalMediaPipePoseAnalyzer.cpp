@@ -6,24 +6,12 @@
 #include <cstring>
 
 #include <opencv2/imgproc.hpp>
-#include <opencv2/calib3d.hpp>
 
 namespace {
 
 // ── face mesh eye landmark 인덱스 (AI 서버 코드와 동일) ────────────────
 const int kLeftEye[]  = {33, 160, 158, 133, 153, 144};
 const int kRightEye[] = {362, 385, 387, 263, 373, 380};
-
-// ── head pose solvePnP 기준점 (3D, mm 단위 표준 얼굴 모델) ────────────
-const cv::Point3f k3d[] = {
-    {  0.0f,   0.0f,   0.0f},   // 코끝      (idx 1)
-    {  0.0f, -63.6f, -12.5f},   // 턱        (idx 152)
-    {-43.3f,  32.7f, -26.0f},   // 왼눈 외각  (idx 263)
-    { 43.3f,  32.7f, -26.0f},   // 오른눈 외각 (idx 33)
-    {-28.9f, -28.9f, -24.1f},   // 왼 입꼬리  (idx 287)
-    { 28.9f, -28.9f, -24.1f},   // 오른 입꼬리 (idx 57)
-};
-const int k2dIdx[] = {1, 152, 263, 33, 287, 57};
 
 std::wstring model_path(const wchar_t* name)
 {
@@ -315,47 +303,40 @@ double LocalMediaPipePoseAnalyzer::compute_ear(const std::vector<float>& lm) con
     return std::clamp((ear_one(kLeftEye) + ear_one(kRightEye)) / 2.0, 0.0, 1.0);
 }
 
-// ── head_yaw / head_pitch (solvePnP) ───────────────────────────────────
+// ── head_yaw / head_pitch ──────────────────────────────────────────────
+// collect_data.py와 동일한 단순 비율/각도 공식 사용 (solvePnP 제거)
+//
+//   head_yaw   = (flm[454].x - flm[234].x) * 100   → 좌우 얼굴 폭 비율 × 100
+//   head_pitch = degrees(atan2(flm[152].y - flm[1].y,
+//                              flm[152].x - flm[1].x)) - 90   → 코끝→턱 벡터각 - 90°
+//
+// face_landmark.onnx 출력은 192×192 기준 정규화 좌표이므로
+// 비율 계산 시 별도 픽셀 변환 불필요 (상대 비율이라 크기 무관)
 
 void LocalMediaPipePoseAnalyzer::compute_head_pose(
-    const std::vector<float>& lm, int crop_w, int crop_h,
+    const std::vector<float>& lm, int /*crop_w*/, int /*crop_h*/,
     double& yaw, double& pitch) const
 {
     yaw = pitch = 0.0;
 
-    std::vector<cv::Point2f> pts2d;
-    pts2d.reserve(6);
-    for (int idx : k2dIdx) {
-        pts2d.push_back({
-            lm[idx * 3]     * static_cast<float>(crop_w) / 192.0f,
-            lm[idx * 3 + 1] * static_cast<float>(crop_h) / 192.0f
-        });
-    }
+    // 468 랜드마크 × 3 = 1404 floats (x, y, z 순, 0~192 스케일)
+    // 인덱스: 1=코끝, 152=턱, 234=오른뺨, 454=왼뺨
+    auto lx = [&](int i) -> double { return lm[i * 3]; };
+    auto ly = [&](int i) -> double { return lm[i * 3 + 1]; };
 
-    const std::vector<cv::Point3f> pts3d(std::begin(k3d), std::end(k3d));
-    const float focal = static_cast<float>(crop_w);
-    const cv::Mat cam_mat = (cv::Mat_<double>(3, 3) <<
-        focal, 0,     crop_w / 2.0,
-        0,     focal, crop_h / 2.0,
-        0,     0,     1.0);
-    const cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, CV_64F);
+    // head_yaw: 왼뺨(454)~오른뺨(234) x좌표 차 × 100 (수평 비율)
+    yaw = (lx(454) - lx(234)) * 100.0 / 192.0; // 192 스케일 보정
 
-    cv::Mat rvec, tvec;
-    if (!cv::solvePnP(pts3d, pts2d, cam_mat, dist_coeffs, rvec, tvec,
-                      false, cv::SOLVEPNP_ITERATIVE)) {
-        return;
-    }
-
-    cv::Mat rmat;
-    cv::Rodrigues(rvec, rmat);
-
-    pitch = std::atan2( rmat.at<double>(2, 1),  rmat.at<double>(2, 2)) * 180.0 / CV_PI;
-    yaw   = std::atan2(-rmat.at<double>(2, 0),
-                        std::sqrt(rmat.at<double>(2, 1) * rmat.at<double>(2, 1) +
-                                  rmat.at<double>(2, 2) * rmat.at<double>(2, 2))) * 180.0 / CV_PI;
+    // head_pitch: 코끝(1)→턱(152) 벡터의 수직 대비 각도
+    const double dy_p = ly(152) - ly(1);
+    const double dx_p = lx(152) - lx(1);
+    pitch = std::atan2(dy_p, dx_p) * 180.0 / CV_PI - 90.0;
 }
 
 // ── neck_angle ─────────────────────────────────────────────────────────
+// collect_data.py와 완전히 동일한 공식 사용:
+//   - 왼쪽 귀(7) + 왼쪽 어깨(11) 단독 사용 (평균 내지 않음)
+//   - dx, dy 모두 abs() → 부호 없이 양의 각도만 반환
 
 double LocalMediaPipePoseAnalyzer::compute_neck_angle(
     const std::vector<float>& lm, int stride, int frame_w, int frame_h) const
@@ -363,15 +344,15 @@ double LocalMediaPipePoseAnalyzer::compute_neck_angle(
     const float sx = static_cast<float>(frame_w) / 256.0f;
     const float sy = static_cast<float>(frame_h) / 256.0f;
 
-    // 7=left_ear, 8=right_ear, 11=left_shoulder, 12=right_shoulder
-    const float ear_x = (lm[7 * stride]     + lm[8 * stride])     / 2.0f * sx;
-    const float ear_y = (lm[7 * stride + 1] + lm[8 * stride + 1]) / 2.0f * sy;
-    const float sh_x  = (lm[11 * stride]    + lm[12 * stride])    / 2.0f * sx;
-    const float sh_y  = (lm[11 * stride + 1]+ lm[12 * stride + 1])/ 2.0f * sy;
+    // 7 = left_ear, 11 = left_shoulder (학습 데이터 수집과 동일한 단일 측 기준)
+    const float ear_x = lm[7 * stride]     * sx;
+    const float ear_y = lm[7 * stride + 1] * sy;
+    const float sh_x  = lm[11 * stride]    * sx;
+    const float sh_y  = lm[11 * stride + 1]* sy;
 
-    const float dx = ear_x - sh_x;
-    const float dy = sh_y  - ear_y;  // y축 반전 (이미지 좌표계)
-    return std::abs(std::atan2(dx, dy)) * 180.0 / CV_PI;
+    const float dx = std::abs(ear_x - sh_x);
+    const float dy = std::abs(ear_y - sh_y);
+    return static_cast<double>(std::atan2(dx, dy)) * 180.0 / CV_PI;
 }
 
 // ── shoulder_diff ───────────────────────────────────────────────────────
