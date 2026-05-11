@@ -87,10 +87,51 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     Ort::MemoryInfo mem_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // ── 1. Pose Landmark (전체 프레임 → 256×256) ─────────────────
+    // ── 1. 얼굴 bbox 감지 (포즈보다 먼저 — 사용자 위치 기준 크롭을 위해) ──
+    cv::Rect face_rect;
+    {
+        cv::Mat gray;
+        cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
+        cv::equalizeHist(gray, gray);
+
+        if (!face_cascade_.empty()) {
+            std::vector<cv::Rect> faces;
+            face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
+            if (!faces.empty()) {
+                // 가장 큰(= 카메라에 가장 가까운) 얼굴만 선택
+                face_rect = *std::max_element(faces.begin(), faces.end(),
+                    [](const cv::Rect& a, const cv::Rect& b){
+                        return a.area() < b.area();
+                    });
+            }
+        }
+
+        // Haar 실패 시 화면 중앙 상단을 얼굴 영역으로 사용
+        if (face_rect.empty()) {
+            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
+        }
+    }
+
+    // ── 2. 사용자 상체 크롭 — 얼굴 중심 기준으로 어깨까지 포함 ──────────
+    // 가로: 얼굴 너비의 4배 (양쪽 어깨 포함)
+    // 세로: 얼굴 높이의 4배 (목 + 어깨 포함), 얼굴 위로 0.5배 여유
+    // 이 크롭 영역 밖에 있는 배경 통행인은 포즈 모델이 볼 수 없음
+    cv::Rect body_crop;
+    {
+        const int face_cx = face_rect.x + face_rect.width / 2;
+        const int bw      = std::min(W, face_rect.width * 4);
+        const int bh      = std::min(H, face_rect.height * 4);
+        const int bx      = std::max(0, face_cx - bw / 2);
+        const int by      = std::max(0, face_rect.y - face_rect.height / 2);
+        body_crop = cv::Rect(bx, by,
+                             std::min(W - bx, bw),
+                             std::min(H - by, bh));
+    }
+
+    // ── 3. Pose Landmark (상체 크롭 → 256×256) ───────────────────────────
     {
         cv::Mat inp;
-        cv::resize(frame.mat, inp, {256, 256});
+        cv::resize(frame.mat(body_crop), inp, {256, 256});
         cv::cvtColor(inp, inp, cv::COLOR_BGR2RGB);
         inp.convertTo(inp, CV_32F, 1.0 / 255.0);
 
@@ -112,39 +153,16 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             if (conf > 0.5f) {
                 const float* lm = outs[0].GetTensorData<float>();
                 const std::vector<float> lm195(lm, lm + 195);
-                result.neck_angle    = compute_neck_angle(lm195, W, H);
-                result.shoulder_diff = compute_shoulder_diff(lm195, H);
+                // 크롭 크기 기준으로 좌표 계산 (각도/차이값이므로 절대 위치 불필요)
+                result.neck_angle    = compute_neck_angle(lm195, body_crop.width, body_crop.height);
+                result.shoulder_diff = compute_shoulder_diff(lm195, body_crop.height);
             }
         } catch (const Ort::Exception& e) {
             OutputDebugStringA(("[LocalPose] pose run: " + std::string(e.what()) + "\n").c_str());
         }
     }
 
-    // ── 2. 얼굴 bbox 감지 ────────────────────────────────────────
-    cv::Rect face_rect;
-    {
-        cv::Mat gray;
-        cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(gray, gray);
-
-        if (!face_cascade_.empty()) {
-            std::vector<cv::Rect> faces;
-            face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
-            if (!faces.empty()) {
-                face_rect = *std::max_element(faces.begin(), faces.end(),
-                    [](const cv::Rect& a, const cv::Rect& b){
-                        return a.area() < b.area();
-                    });
-            }
-        }
-
-        // Haar 실패 시 화면 중앙 상단을 얼굴 영역으로 사용
-        if (face_rect.empty()) {
-            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
-        }
-    }
-
-    // ── 3. Face Landmark (얼굴 crop → 192×192) ───────────────────
+    // ── 4. Face Landmark (얼굴 crop → 192×192) ───────────────────
     {
         const int pad = static_cast<int>(face_rect.width * 0.25);
         const int rx  = std::max(0, face_rect.x - pad);
@@ -192,7 +210,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
-    // ── 4. 최종 판정 ─────────────────────────────────────────────
+    // ── 5. 최종 판정 ─────────────────────────────────────────────
     result.absent     = (result.face_detected == 0);
     result.drowsy     = (result.face_detected == 1 && result.ear > 0.0 && result.ear < 0.25);
     result.posture_ok = (result.neck_angle < 25.0);
