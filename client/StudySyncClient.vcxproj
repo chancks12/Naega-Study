@@ -119,6 +119,7 @@
     <ClInclude Include="include\network\JsonlBatchUploader.h" />
     <ClInclude Include="include\network\LocalClaimCheckClipStore.h" />
     <ClInclude Include="include\network\LocalClipGarbageCollector.h" />
+    <ClInclude Include="include\network\FpsStore.h" />
     <ClInclude Include="include\network\ReconnectPolicy.h" />
     <ClInclude Include="include\network\StatsApi.h" />
     <ClInclude Include="include\network\TokenStore.h" />
@@ -140,6 +141,7 @@
     <ClCompile Include="src\analysis\LocalMediaPipePoseAnalyzer.cpp" />
     <ClCompile Include="src\app\ClipsPanel.cpp" />
     <ClCompile Include="src\app\HomePanel.cpp" />
+    <ClCompile Include="src\app\FpsDialog.cpp" />
     <ClCompile Include="src\app\SettingsPanel.cpp" />
     <ClCompile Include="src\app\StatsPanel.cpp" />
     <ClCompile Include="src\alert\AlertDispatchThread.cpp" />
@@ -173,6 +175,7 @@
     <ClCompile Include="src\network\ReconnectPolicy.cpp" />
     <ClCompile Include="src\network\SessionApi.cpp" />
     <ClCompile Include="src\network\StatsApi.cpp" />
+    <ClCompile Include="src\network\FpsStore.cpp" />
     <ClCompile Include="src\network\TokenStore.cpp" />
     <ClCompile Include="src\network\WinHttpClient.cpp" />
     <ClCompile Include="src\render\D2DRenderer.cpp" />
