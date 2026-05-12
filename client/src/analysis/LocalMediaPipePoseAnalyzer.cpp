@@ -9,7 +9,6 @@
 
 namespace {
 
-// ── face mesh eye landmark 인덱스 (AI 서버 코드와 동일) ────────────────
 const int kLeftEye[]  = {33, 160, 158, 133, 153, 144};
 const int kRightEye[] = {362, 385, 387, 263, 373, 380};
 
@@ -24,6 +23,16 @@ std::wstring model_path(const wchar_t* name)
     return path;
 }
 
+std::string wpath_to_str(const std::wstring& wp)
+{
+    if (wp.empty()) return {};
+    const int n = WideCharToMultiByte(CP_ACP, 0, wp.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string s(static_cast<size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_ACP, 0, wp.c_str(), -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+
 double euclidean(float x1, float y1, float x2, float y2)
 {
     const float dx = x1 - x2, dy = y1 - y2;
@@ -31,8 +40,6 @@ double euclidean(float x1, float y1, float x2, float y2)
 }
 
 } // namespace
-
-// ── 초기화 ─────────────────────────────────────────────────────────────
 
 bool LocalMediaPipePoseAnalyzer::initialize()
 {
@@ -49,14 +56,12 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         return false;
     }
 
-    // 실제 포즈 모델 출력 노드 이름을 열거해 저장 — 하드코딩 의존 제거
     {
         Ort::AllocatorWithDefaultOptions alloc;
         const size_t n_out = pose_session_->GetOutputCount();
         for (size_t i = 0; i < n_out; ++i) {
             auto name_alloc = pose_session_->GetOutputNameAllocated(i, alloc);
             const std::string name(name_alloc.get());
-            OutputDebugStringA(("[LocalPose] pose output[" + std::to_string(i) + "]: " + name + "\n").c_str());
             if (i == 0) pose_out0_name_ = name;
             else if (i == 1) pose_out1_name_ = name;
         }
@@ -64,18 +69,10 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         if (pose_out1_name_.empty()) pose_out1_name_ = "Identity_1";
     }
 
-    // 얼굴 위치 감지용 Haar (landmark 정확도에는 영향 없음)
-    face_cascade_.load("C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml");
-    if (face_cascade_.empty()) {
-        OutputDebugStringA("[LocalPose] face cascade not found — full-frame crop fallback\n");
-    }
-
     initialized_ = true;
     OutputDebugStringA("[LocalPose] ONNX models loaded OK\n");
     return true;
 }
-
-// ── 메인 분석 ──────────────────────────────────────────────────────────
 
 std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& frame)
 {
@@ -90,53 +87,10 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     Ort::MemoryInfo mem_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // ── 1. 얼굴 bbox 감지 + EMA 스무딩 ────────────────────────────────────
-    // Haar 검출 결과를 EMA로 평활화해 body_crop 흔들림을 최소화한다.
-    // 검출 실패 시 EMA 값을 유지(이전 위치 사용) — 완전 낙폭 방지
-    cv::Rect face_rect;
-    {
-        cv::Mat gray;
-        cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(gray, gray);
+    // ── 1. 크롭 영역 (프레임 중앙 절반) ─────────────────────────────────────
+    const cv::Rect face_rect(W / 4, 0, W / 2, H / 2);
 
-        if (!face_cascade_.empty()) {
-            std::vector<cv::Rect> faces;
-            face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
-            if (!faces.empty()) {
-                const cv::Rect best = *std::max_element(faces.begin(), faces.end(),
-                    [](const cv::Rect& a, const cv::Rect& b){ return a.area() < b.area(); });
-                const cv::Rect2f bf(static_cast<float>(best.x),   static_cast<float>(best.y),
-                                    static_cast<float>(best.width), static_cast<float>(best.height));
-                constexpr float kA = 0.25f; // EMA 가중치: 낮을수록 더 부드럽게
-                // ema_face_rect_ 의 area==0 이 초기화 미완료 신호
-                if (ema_face_rect_.area() == 0.0f) {
-                    ema_face_rect_ = bf;
-                } else {
-                    ema_face_rect_.x      = kA * bf.x      + (1.f - kA) * ema_face_rect_.x;
-                    ema_face_rect_.y      = kA * bf.y      + (1.f - kA) * ema_face_rect_.y;
-                    ema_face_rect_.width  = kA * bf.width  + (1.f - kA) * ema_face_rect_.width;
-                    ema_face_rect_.height = kA * bf.height + (1.f - kA) * ema_face_rect_.height;
-                }
-            }
-        }
-
-        if (ema_face_rect_.area() > 0.0f) {
-            // EMA 결과를 정수 좌표로 변환 + 프레임 경계 보정
-            const int rx = std::max(0, static_cast<int>(ema_face_rect_.x));
-            const int ry = std::max(0, static_cast<int>(ema_face_rect_.y));
-            const int rw = std::min(W - rx, static_cast<int>(ema_face_rect_.width));
-            const int rh = std::min(H - ry, static_cast<int>(ema_face_rect_.height));
-            face_rect = (rw > 0 && rh > 0) ? cv::Rect(rx, ry, rw, rh)
-                                             : cv::Rect(W / 4, 0, W / 2, H / 2);
-        } else {
-            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
-        }
-    }
-
-    // ── 2. 사용자 상체 크롭 — 얼굴 중심 기준으로 어깨까지 포함 ──────────
-    // 가로: 얼굴 너비의 4배 (양쪽 어깨 포함)
-    // 세로: 얼굴 높이의 4배 (목 + 어깨 포함), 얼굴 위로 0.5배 여유
-    // 이 크롭 영역 밖에 있는 배경 통행인은 포즈 모델이 볼 수 없음
+    // ── 2. 상체 크롭 ─────────────────────────────────────────────────────────
     cv::Rect body_crop;
     {
         const int face_cx = face_rect.x + face_rect.width / 2;
@@ -149,9 +103,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                              std::min(H - by, bh));
     }
 
-    // ── 3. Pose Landmark (상체 크롭 → 256×256) ───────────────────────────
-    // collect_data.py: `if pose_result.pose_landmarks:` 와 동일하게,
-    // 사람이 감지되지 않으면 neck_angle / shoulder_diff 를 계산하지 않는다.
+    // ── 3. Pose Landmark (256×256) ──────────────────────────────────────────
     bool pose_detected = false;
     {
         cv::Mat inp;
@@ -176,42 +128,44 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             const float raw_flag = outs[1].GetTensorData<float>()[0];
             const float conf = 1.0f / (1.0f + std::exp(-raw_flag));
 
-            OutputDebugStringA(("[LocalPose] pose flag=" + std::to_string(raw_flag)
-                                + " conf=" + std::to_string(conf) + "\n").c_str());
-
-            // collect_data.py min_detection_confidence=0.5 에 맞춰 임계값 0.5 사용.
-            // 0.3 이하 임계값은 사람 없는 프레임에서도 garbage 랜드마크를 통과시켜
-            // neck_angle / shoulder_diff 에 잘못된 값이 기록되는 원인이었다.
             if (conf > 0.5f) {
                 const float* lm_ptr = outs[0].GetTensorData<float>();
                 const size_t elem_count = outs[0].GetTensorTypeAndShapeInfo().GetElementCount();
 
-                // 랜드마크당 값 수 감지
-                // mediapipe 0.10.14 full 모델: 195 = 65×3 (33 주요 + 32 보조, stride=3)
                 int stride = 3;
-                if      (elem_count % 3 != 0 && elem_count % 5 == 0) stride = 5;
-                else if (elem_count % 3 != 0 && elem_count % 4 == 0) stride = 4;
+                if      (elem_count % 39 == 0) stride = static_cast<int>(elem_count / 39);
+                else if (elem_count % 33 == 0) stride = static_cast<int>(elem_count / 33);
+                else if (elem_count % 5 == 0 && elem_count / 5 >= 33) stride = 5;
 
                 const size_t min_needed = static_cast<size_t>(12 * stride + stride);
                 if (elem_count >= min_needed) {
                     const std::vector<float> lm(lm_ptr, lm_ptr + elem_count);
-                    const double raw_neck  = compute_neck_angle(lm, stride, body_crop.width, body_crop.height);
-                    const double raw_sdiff = compute_shoulder_diff(lm, stride, body_crop.height);
-                    // 160° 초과만 물리적 불가능으로 간주 (90° 기준은 너무 엄격)
-                    if (raw_neck <= 160.0) {
-                        // EMA로 프레임 간 수치 평활화 — 가만히 있어도 튀는 현상 억제
-                        constexpr double kB = 0.2; // 낮을수록 더 부드럽게 (0.2 ≈ 5프레임 평균)
-                        if (!has_ema_) {
-                            ema_neck_angle_    = raw_neck;
-                            ema_shoulder_diff_ = raw_sdiff;
-                            has_ema_           = true;
-                        } else {
-                            ema_neck_angle_    = kB * raw_neck  + (1.0 - kB) * ema_neck_angle_;
-                            ema_shoulder_diff_ = kB * raw_sdiff + (1.0 - kB) * ema_shoulder_diff_;
+
+                    bool vis_ok = true;
+                    if (stride >= 4) {
+                        const float vis_ear  = lm[7  * stride + 3];
+                        const float vis_shl  = lm[11 * stride + 3];
+                        const float vis_shr  = lm[12 * stride + 3];
+                        vis_ok = (vis_ear >= 0.5f && vis_shl >= 0.5f && vis_shr >= 0.5f);
+                    }
+
+                    if (vis_ok) {
+                        const double raw_neck  = compute_neck_angle(lm, stride, body_crop.width, body_crop.height);
+                        const double raw_sdiff = compute_shoulder_diff(lm, stride, body_crop.height);
+                        if (raw_neck <= 160.0) {
+                            constexpr double kB = 0.2;
+                            if (!has_ema_) {
+                                ema_neck_angle_    = raw_neck;
+                                ema_shoulder_diff_ = raw_sdiff;
+                                has_ema_           = true;
+                            } else {
+                                ema_neck_angle_    = kB * raw_neck  + (1.0 - kB) * ema_neck_angle_;
+                                ema_shoulder_diff_ = kB * raw_sdiff + (1.0 - kB) * ema_shoulder_diff_;
+                            }
+                            result.neck_angle    = ema_neck_angle_;
+                            result.shoulder_diff = ema_shoulder_diff_;
+                            pose_detected        = true;
                         }
-                        result.neck_angle    = ema_neck_angle_;
-                        result.shoulder_diff = ema_shoulder_diff_;
-                        pose_detected        = true;
                     }
                 }
             }
@@ -219,9 +173,6 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             OutputDebugStringA(("[LocalPose] pose run: " + std::string(e.what()) + "\n").c_str());
         }
 
-        // collect_data.py: pose_result.pose_landmarks 가 None 이면
-        // neck_angle=0.0, shoulder_diff=0.0 (기본값) 그대로 유지.
-        // EMA 상태도 초기화해 이전 프레임의 stale 값이 다음 감지 시 오염되지 않도록 한다.
         if (!pose_detected) {
             result.neck_angle    = 0.0;
             result.shoulder_diff = 0.0;
@@ -229,7 +180,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
-    // ── 4. Face Landmark (얼굴 crop → 192×192) ───────────────────
+    // ── 4. Face Landmark (192×192) ──────────────────────────────────────────
     {
         const int pad = static_cast<int>(face_rect.width * 0.25);
         const int rx  = std::max(0, face_rect.x - pad);
@@ -266,7 +217,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                 const float* lm_raw = outs[0].GetTensorData<float>();
                 const std::vector<float> lm468(lm_raw, lm_raw + 1404);
                 result.ear = compute_ear(lm468);
-                compute_head_pose(lm468, padded.width, padded.height,
+                compute_head_pose(lm468, padded.width, padded.height, W,
                                   result.head_yaw, result.head_pitch);
             } else {
                 result.face_detected = 0;
@@ -277,11 +228,16 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
+    if (result.face_detected == 0) {
+        result.neck_angle    = 0.0;
+        result.shoulder_diff = 0.0;
+        has_ema_             = false;
+        pose_detected        = false;
+    }
+
     // ── 5. 최종 판정 ─────────────────────────────────────────────
     result.absent     = (result.face_detected == 0);
     result.drowsy     = (result.face_detected == 1 && result.ear > 0.0 && result.ear < 0.25);
-    // pose 미감지 시 neck_angle=0.0 이므로 posture_ok=true가 되어 Python 동작과 일치.
-    // pose 감지 여부와 무관하게 neck_angle 값으로만 판정한다 (collect_data.py 동일).
     result.posture_ok = (result.neck_angle < 25.0);
 
     if (result.absent) {
@@ -303,8 +259,6 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     return result;
 }
 
-// ── EAR 계산 ───────────────────────────────────────────────────────────
-
 double LocalMediaPipePoseAnalyzer::compute_ear(const std::vector<float>& lm) const
 {
     auto px = [&](int i){ return lm[i * 3]; };
@@ -320,71 +274,34 @@ double LocalMediaPipePoseAnalyzer::compute_ear(const std::vector<float>& lm) con
     return std::clamp((ear_one(kLeftEye) + ear_one(kRightEye)) / 2.0, 0.0, 1.0);
 }
 
-// ── head_yaw / head_pitch ──────────────────────────────────────────────
-// collect_data.py와 동일한 단순 비율/각도 공식 사용 (solvePnP 제거)
-//
-//   head_yaw   = (flm[454].x - flm[234].x) * 100   → 좌우 얼굴 폭 비율 × 100
-//   head_pitch = degrees(atan2(flm[152].y - flm[1].y,
-//                              flm[152].x - flm[1].x)) - 90   → 코끝→턱 벡터각 - 90°
-//
-// face_landmark.onnx 출력은 192×192 기준 정규화 좌표이므로
-// 비율 계산 시 별도 픽셀 변환 불필요 (상대 비율이라 크기 무관)
-
 void LocalMediaPipePoseAnalyzer::compute_head_pose(
-    const std::vector<float>& lm, int /*crop_w*/, int /*crop_h*/,
-    double& yaw, double& pitch) const
+    const std::vector<float>& lm, int crop_w, int /*crop_h*/,
+    int frame_w, double& yaw, double& pitch) const
 {
     yaw = pitch = 0.0;
-
-    // 468 랜드마크 × 3 = 1404 floats (x, y, z 순, 0~192 스케일)
-    // 인덱스: 1=코끝, 152=턱, 234=오른뺨, 454=왼뺨
+    if (frame_w <= 0) return;
     auto lx = [&](int i) -> double { return lm[i * 3]; };
     auto ly = [&](int i) -> double { return lm[i * 3 + 1]; };
-
-    // head_yaw: 왼뺨(454)~오른뺨(234) x좌표 차 × 100 (수평 비율)
-    yaw = (lx(454) - lx(234)) * 100.0 / 192.0; // 192 스케일 보정
-
-    // head_pitch: 코끝(1)→턱(152) 벡터의 수직 대비 각도
+    yaw   = (lx(454) - lx(234)) * 100.0 * static_cast<double>(crop_w)
+            / (192.0 * static_cast<double>(frame_w));
     const double dy_p = ly(152) - ly(1);
     const double dx_p = lx(152) - lx(1);
     pitch = std::atan2(dy_p, dx_p) * 180.0 / CV_PI - 90.0;
 }
 
-// ── neck_angle ─────────────────────────────────────────────────────────
-// collect_data.py와 완전히 동일한 공식 사용:
-//   - 왼쪽 귀(7) + 왼쪽 어깨(11) 단독 사용 (평균 내지 않음)
-//   - dx, dy 모두 abs() → 부호 없이 양의 각도만 반환
-//
-// collect_data.py:
-//   ear_x = lm[7].x * w;  ear_y = lm[7].y * h
-//   sh_x  = lm[11].x * w; sh_y  = lm[11].y * h
-//   dx = abs(ear_x - sh_x); dy = abs(ear_y - sh_y)
-//   neck_angle = degrees(arctan2(dx, dy))
-
 double LocalMediaPipePoseAnalyzer::compute_neck_angle(
     const std::vector<float>& lm, int stride, int frame_w, int frame_h) const
 {
-    // ONNX 출력 좌표 [0,256] → body_crop 픽셀 변환
-    // Python: lm[i].x * W (normalized × full-frame width)
-    // C++:    lm[i*stride] * (body_crop.width/256)  (model-space → crop-pixel)
-    // atan2(dx, dy) 비율 계산이므로 dx/dy 스케일이 동일하면 각도 동일
     const float sx = static_cast<float>(frame_w) / 256.0f;
     const float sy = static_cast<float>(frame_h) / 256.0f;
-
-    // 7 = left_ear, 11 = left_shoulder (학습 데이터 수집과 동일한 단일 측 기준)
     const float ear_x = lm[7 * stride]      * sx;
     const float ear_y = lm[7 * stride + 1]  * sy;
     const float sh_x  = lm[11 * stride]     * sx;
     const float sh_y  = lm[11 * stride + 1] * sy;
-
     const float dx = std::abs(ear_x - sh_x);
     const float dy = std::abs(ear_y - sh_y);
     return static_cast<double>(std::atan2(dx, dy)) * 180.0 / CV_PI;
 }
-
-// ── shoulder_diff ───────────────────────────────────────────────────────
-// collect_data.py:
-//   shoulder_diff = abs(lm[11].y - lm[12].y) * h
 
 double LocalMediaPipePoseAnalyzer::compute_shoulder_diff(
     const std::vector<float>& lm, int stride, int frame_h) const
@@ -392,8 +309,6 @@ double LocalMediaPipePoseAnalyzer::compute_shoulder_diff(
     const float sy = static_cast<float>(frame_h) / 256.0f;
     return std::abs(lm[11 * stride + 1] - lm[12 * stride + 1]) * sy;
 }
-
-// ── 종료 ───────────────────────────────────────────────────────────────
 
 void LocalMediaPipePoseAnalyzer::shutdown()
 {
