@@ -7,8 +7,9 @@
 namespace {
 PostureEventType event_type_from_state(const std::string& state)
 {
-    if (state == "drowsy") return PostureEventType::Drowsy;
-    if (state == "absent") return PostureEventType::Absent;
+    if (state == "drowsy")    return PostureEventType::Drowsy;
+    if (state == "absent")    return PostureEventType::Absent;
+    if (state == "focus")     return PostureEventType::Focus;
     return PostureEventType::BadPosture;
 }
 
@@ -25,9 +26,7 @@ void PostureEventDetector::set_callback(EventCallback cb)
 
 void PostureEventDetector::feed(const AnalysisResult& result, const EventShadowBuffer& shadow)
 {
-    // ── post-roll 카운트다운 ────────────────────────────────────────
-    // pending_ 이 있으면 매 프레임마다 남은 카운트를 줄인다.
-    // 0이 되면 현재 shadow 상태로 클립 스냅샷을 찍고 콜백을 호출한다.
+    // ── post-roll 카운트다운 ────────────────────────────────
     if (pending_.has_value()) {
         --pending_->post_roll_remaining;
         if (pending_->post_roll_remaining <= 0) {
@@ -35,25 +34,29 @@ void PostureEventDetector::feed(const AnalysisResult& result, const EventShadowB
         }
     }
 
-    // ── 상태 기반 이벤트 트리거 ────────────────────────────────────
-    // state는 AI 서버 응답 시에만 비어있지 않음 (local kp.state는 feed 전에 클리어됨)
+    // ── 상태 기반 이벤트 트리거 ─────────────────────────────
     if (!result.state.empty()) {
         const std::string previous = last_state_;
         if (previous != result.state) {
             last_state_ = result.state;
 
             if (result.state == "drowsy" || result.state == "distracted" || result.state == "absent") {
-                const std::string reason = reason_from_state(previous, result.state);
-                schedule_event(event_type_from_state(result.state), reason.c_str(), result);
-            } else {
-                // "focus" 등 정상 상태로 전환 시에만 쿨다운 해제
+                schedule_event(event_type_from_state(result.state),
+                               reason_from_state(previous, result.state).c_str(), result);
+            } else if (result.state == "focus") {
                 event_cooldown_ = false;
+                // 비정상 상태에서 복규시만 공부 시작 로그 기록
+                // (초기 "" → focus 전환은 서비스 시작이므로 제외)
+                if (!previous.empty() && previous != "focus") {
+                    schedule_event(PostureEventType::Focus,
+                                   reason_from_state(previous, result.state).c_str(), result);
+                }
             }
         }
         return;
     }
 
-    // ── 로컬 임계값 기반 이벤트 트리거 ────────────────────────────
+    // ── 로컈 임계값 기반 이벤트 트리거 (AI 서버 응답 전) ────────
     bad_posture_streak_ = (result.neck_angle > neck_threshold_ || !result.posture_ok) ? bad_posture_streak_ + 1 : 0;
     drowsy_streak_ = (result.ear < ear_threshold_ || result.drowsy) ? drowsy_streak_ + 1 : 0;
 
@@ -75,10 +78,6 @@ void PostureEventDetector::reset_cooldown()
     last_state_.clear();
 }
 
-// ── 이벤트 예약 (post-roll 대기 시작) ─────────────────────────────────────
-// 쿨다운을 즉시 설정해 중복 이벤트를 막고, post-roll 카운터를 설정한다.
-// 이미 pending_ 이 있으면 덮어쓴다 (최신 상태가 더 관련성 높음).
-
 void PostureEventDetector::schedule_event(PostureEventType type, const char* reason, const AnalysisResult& result)
 {
     const std::uint64_t ts = result.timestamp_ms > 0
@@ -87,7 +86,6 @@ void PostureEventDetector::schedule_event(PostureEventType type, const char* rea
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::system_clock::now().time_since_epoch()).count());
 
-    // AI 서버 추론 주기(5초)보다 빠르게 이벤트가 발화되지 않도록 최소 간격 보장
     if (last_event_ms_ > 0 && ts - last_event_ms_ < kMinEventIntervalMs)
         return;
 
@@ -100,9 +98,6 @@ void PostureEventDetector::schedule_event(PostureEventType type, const char* rea
     pending_ = PendingEvent{ type, ts, reason, result.confidence, post_roll };
 }
 
-// ── post-roll 완료 → 클립 스냅샷 + 콜백 호출 ──────────────────────────────
-// 윈도우 = (1초 pre + 5초 main + 1초 post) * camera_fps = 7 * fps 프레임
-
 void PostureEventDetector::flush_pending(const EventShadowBuffer& shadow)
 {
     if (!pending_.has_value() || !callback_) {
@@ -111,7 +106,7 @@ void PostureEventDetector::flush_pending(const EventShadowBuffer& shadow)
     }
 
     const int fps = camera_fps_.load();
-    const std::size_t window = static_cast<std::size_t>(7 * fps); // 7초치
+    const std::size_t window = static_cast<std::size_t>(7 * fps);
 
     PostureEvent event;
     event.type         = pending_->type;
@@ -120,7 +115,6 @@ void PostureEventDetector::flush_pending(const EventShadowBuffer& shadow)
     event.reason       = pending_->reason;
     event.confidence   = pending_->confidence;
     event.camera_fps   = fps;
-    // snapshot()이 내부적으로 clone 처리 — 별도 clone 불필요
     event.frames = shadow.snapshot(window);
 
     pending_.reset();

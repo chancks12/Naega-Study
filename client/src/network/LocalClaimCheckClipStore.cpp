@@ -37,10 +37,11 @@ std::uint64_t now_ms()
 const char* event_type_name(PostureEventType type)
 {
     switch (type) {
-    case PostureEventType::Drowsy: return "drowsy";
-    case PostureEventType::Absent: return "absent";
+    case PostureEventType::Drowsy:    return "drowsy";
+    case PostureEventType::Absent:    return "absent";
+    case PostureEventType::Focus:     return "focus";
     case PostureEventType::BadPosture:
-    default: return "distracted";
+    default:                          return "distracted";
     }
 }
 }
@@ -59,7 +60,6 @@ ClipRef LocalClaimCheckClipStore::store_clip(const PostureEvent& event)
     const std::uint64_t created_at = now_ms();
     const std::uint64_t expires_at = created_at + static_cast<std::uint64_t>(retention_days_) * 24ULL * 60ULL * 60ULL * 1000ULL;
 
-    // 이벤트 폴더명: HHMMSS_state (예: 143205_drowsy) — 사람이 읽기 쉬운 형식
     char time_str[8]{};
     {
         const time_t ts = static_cast<time_t>(event.timestamp_ms / 1000);

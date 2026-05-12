@@ -9,7 +9,8 @@
 enum class PostureEventType {
     BadPosture,
     Drowsy,
-    Absent
+    Absent,
+    Focus   // 비정상 상태에서 공부 재개시 로그 기록용
 };
 
 struct PostureEvent {
@@ -21,4 +22,3 @@ struct PostureEvent {
     double confidence = 1.0; // AI 판정 신뢰도 (복기 화면 피드백 우선순위 결정용)
     int camera_fps = 30;     // 클립 VideoWriter fps 및 윈도우 크기 계산용
 };
-
