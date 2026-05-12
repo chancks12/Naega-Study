@@ -34,10 +34,6 @@ public:
     void set_stats_history(SessionStatsHistory* h) { stats_history_ = h; }
     void set_server_stats(ServerStatsSnapshot* s) { server_stats_ = s; }
 
-    // 휴식 권장 알림 트리거 (AlertDispatchThread → 렌더 스레드)
-    //  expire_ms: steady_clock 기준 만료 시각 (0이면 숨김)
-    void set_break_alert(std::uint64_t expire_ms) { break_alert_expire_ms_.store(expire_ms); }
-
     // Draws the latest AI analysis result over the camera frame.
     void draw(ID2D1RenderTarget* rt, const AnalysisResult& result);
 
@@ -73,16 +69,14 @@ private:
     void draw_toast(ID2D1RenderTarget* rt, float x, float y, const std::string& text);
     void draw_calibration(ID2D1RenderTarget* rt, int countdown);
     void draw_stats_panel(ID2D1RenderTarget* rt);
-    void draw_break_alert(ID2D1RenderTarget* rt);
     void draw_status_badge(ID2D1RenderTarget* rt, const AnalysisResult& result);
 
-    // 세션 타이머 / 토스트 / 캘리브레이션 / 통계 / 휴식알림
+    // 세션 타이머 / 토스트 / 캘리브레이션 / 통계
     std::atomic<std::uint64_t> session_start_ms_{ 0 };
     ToastBuffer*               toast_buffer_ = nullptr;
     std::atomic<int>           calib_countdown_{ -1 };
     SessionStatsHistory*       stats_history_ = nullptr;
     ServerStatsSnapshot*       server_stats_ = nullptr;
-    std::atomic<std::uint64_t> break_alert_expire_ms_{ 0 };
 
     Microsoft::WRL::ComPtr<IDWriteFactory> dwrite_;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> fmt_label_;
@@ -104,13 +98,9 @@ private:
     Microsoft::WRL::ComPtr<IDWriteTextFormat>     fmt_calib_count_;   // 큰 카운트다운 숫자
     Microsoft::WRL::ComPtr<IDWriteTextFormat>     fmt_calib_msg_;     // 안내 메시지
 
-    // 통계 패널 / 휴식 알림 전용 브러시
+    // 통계 패널 전용 브러시
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush_chart_line_;  // 꺾은선 그래프
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush_chart_bg_;    // 통계 패널 배경
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush_break_bg_;    // 휴식 알림 배경
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush_break_panel_; // 휴식 알림 패널
-    Microsoft::WRL::ComPtr<IDWriteTextFormat>     fmt_break_title_;   // 휴식 알림 제목
-    Microsoft::WRL::ComPtr<IDWriteTextFormat>     fmt_break_msg_;     // 휴식 알림 메시지
 
     bool initialized_ = false;
 };
