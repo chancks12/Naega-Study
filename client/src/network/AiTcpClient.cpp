@@ -10,7 +10,7 @@
 
 namespace {
 constexpr int kProtoKeypointPush   = 2000;
-constexpr int kProtoCalibration    = 2002; // 캘리브레이션 기준값 계산용 (AI 서버 추론 제외)
+constexpr int kProtoCalibration    = 2002;
 constexpr int kProtoAnalysisResult = 2001;
 constexpr std::uint32_t kMaxJsonBytes = 64 * 1024;
 
@@ -26,7 +26,7 @@ AiTcpClient::AiTcpClient(CaptureThread::SendFrameBuffer& send_buffer,
                          EventShadowBuffer& shadow_buffer,
                          EventQueue& event_queue,
                          AnalysisResultBuffer& result_buffer,
-                         int /* jpeg_quality — 미사용 */)
+                         int /* jpeg_quality */)
     : send_buffer_(send_buffer)
     , shadow_buffer_(shadow_buffer)
     , event_queue_(event_queue)
@@ -58,6 +58,18 @@ void AiTcpClient::set_camera_fps(int fps)
     detector_.set_camera_fps(validated);
 }
 
+void AiTcpClient::set_calibration_mode(bool on)
+{
+    if (on) calib_frames_sent_.store(0);
+    calibration_mode_.store(on);
+}
+
+void AiTcpClient::set_on_calibration_complete(std::function<void()> cb)
+{
+    std::lock_guard<std::mutex> lk(calib_cb_mtx_);
+    on_calibration_complete_ = std::move(cb);
+}
+
 void AiTcpClient::start(const std::string& host,
                         std::uint16_t port,
                         long long session_id,
@@ -81,7 +93,6 @@ void AiTcpClient::run(std::string host,
                       int sample_interval)
 {
     if (sample_interval <= 0) sample_interval = 1;
-
     log_ai_tcp("worker started");
 
     long long frame_id = 0;
@@ -111,10 +122,9 @@ void AiTcpClient::run(std::string host,
                 continue;
             }
 
+            // 대기 중 쌓인 프레임은 버리고 최신 프레임만 사용
             Frame newer;
-            while (send_buffer_.try_pop(newer)) {
-                frame = std::move(newer);
-            }
+            while (send_buffer_.try_pop(newer)) frame = std::move(newer);
 
             ++frame_index;
             if (frame_index < sample_interval) continue;
@@ -124,9 +134,10 @@ void AiTcpClient::run(std::string host,
             if (!kp_opt.has_value()) continue;
             const AnalysisResult kp = kp_opt.value();
 
-            // 캘리브레이션 중에는 보간 프레임 삽입 불필요
-            // (AI 서버가 캘리브레이션 패킷을 누적하지 않으므로 개수 채울 필요 없음)
-            if (!calibration_mode_.load()) {
+            const bool is_calib = calibration_mode_.load();
+
+            if (!is_calib) {
+                // 일반 모드: 보간 프레임 삽입
                 const int cam_fps = camera_fps_.load();
                 constexpr int kTargetFps = 30;
                 const int n_interp = (cam_fps > 0 && cam_fps < kTargetFps)
@@ -160,9 +171,22 @@ void AiTcpClient::run(std::string host,
                 break;
             }
 
-            // 캘리브레이션 중에는 UI 갱신 및 이벤트 감지 생략
-            if (calibration_mode_.load()) continue;
+            if (is_calib) {
+                // 캘리브레이션 프레임 카운트 증가; 150개 도달 시 자동 완료
+                const int sent = calib_frames_sent_.fetch_add(1) + 1;
+                if (sent >= kCalibFrameTarget) {
+                    calibration_mode_.store(false);
+                    std::function<void()> cb;
+                    {
+                        std::lock_guard<std::mutex> lk(calib_cb_mtx_);
+                        cb = on_calibration_complete_;
+                    }
+                    if (cb) cb();
+                }
+                continue; // UI 갱신 / 이벤트 감지 생략
+            }
 
+            // 일반 모드: UI 갱신 + 이벤트 감지
             AnalysisResult display = kp;
             bool ai_has_responded = false;
             {
@@ -214,7 +238,6 @@ void AiTcpClient::recv_loop(SOCKET socket, std::atomic_bool& conn_alive)
             return;
         }
 
-        // 캘리브레이션 중 수신된 응답은 무시 (서버가 2002 패킷 처리 결과를 보낼 수 있음)
         if (calibration_mode_.load()) continue;
 
         std::lock_guard<std::mutex> lock(result_mutex_);
@@ -263,7 +286,6 @@ bool AiTcpClient::send_keypoint_packet(SOCKET socket,
                                        long long session_id,
                                        long long frame_id)
 {
-    // 캘리브레이션 모드이면 2002, 일반 추론이면 2000
     const int proto = calibration_mode_.load() ? kProtoCalibration : kProtoKeypointPush;
 
     std::ostringstream json;

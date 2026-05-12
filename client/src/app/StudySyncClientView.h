@@ -34,20 +34,11 @@ public:
     explicit CStudySyncClientView(ClientTransportConfig config = {});
     ~CStudySyncClientView() override;
 
-    // 세션 ID + 시작 시각 주입 (MainFrm::start_capture() 에서 호출)
     void set_session_id(long long session_id, const std::string& start_time);
-
     void update_session_id(long long session_id);
     void update_camera_fps(int fps);
-
-    // 세션별 클립 저장 경로 갱신
     void set_clip_directory(const std::string& dir);
-
-    // 모든 워커 스레드 정지 (백그라운드 스레드에서 호출 가능)
-    // 완료 후 UI 스레드에서 DestroyWindow()를 호출해야 함
     void stop_all_threads();
-
-    // 학습 종료 콜백 — "학습 종료" 버튼 클릭 시 MainFrm::stop_capture() 호출
     void set_stop_callback(std::function<void()> cb) { stop_cb_ = std::move(cb); }
 
     ReviewEventStore& review_store() { return review_store_; }
@@ -60,9 +51,12 @@ protected:
     afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnTimer(UINT_PTR nIDEvent);
+    afx_msg LRESULT OnCalibrationComplete(WPARAM, LPARAM);
     DECLARE_MESSAGE_MAP()
 
-    static constexpr UINT_PTR IDT_CALIB       = 1;
+    // WM_CALIB_COMPLETE: AiTcpClient 워커 스레드가 150프레임 완료 후 PostMessage로 신호
+    static constexpr UINT WM_CALIB_COMPLETE = WM_APP + 1;
+
     static constexpr UINT_PTR IDT_CALIB_HIDE  = 2;
     static constexpr UINT_PTR IDT_LOG_FLUSH   = 3;
     static constexpr UINT_PTR IDT_STATS_FETCH = 4;
@@ -74,10 +68,8 @@ protected:
     std::mutex          calib_mtx_;
     std::vector<double> calib_samples_;
     bool                calibrating_ = false;
-    int                 calib_tick_  = 0;
 
 private:
-    // 멤버 선언 순서 = 초기화 순서 (의존 관계 유지)
     CaptureThread::RenderFrameBuffer render_buffer_;
     CaptureThread::SendFrameBuffer   send_buffer_;
     EventShadowBuffer                shadow_buffer_;
@@ -110,6 +102,6 @@ private:
     LocalClipGarbageCollector clip_garbage_collector_;
 
     std::function<void()> stop_cb_;
-    std::string           last_ai_state_;     // AI 서버 마지막 state (중복 알림 방지)
-    std::atomic_bool      threads_stopped_{ false }; // stop_all_threads() 완료 여부
+    std::string           last_ai_state_;
+    std::atomic_bool      threads_stopped_{ false };
 };
