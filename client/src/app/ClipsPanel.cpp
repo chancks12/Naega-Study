@@ -37,7 +37,7 @@ std::wstring parse_session_name(const std::wstring& s)
          + L" " + s.substr(9, 2) + L":" + s.substr(11, 2) + L":" + s.substr(13, 2);
 }
 
-// "143205_drowsy" → L"14:32 · 졸음"
+// "143205_drowsy" → L"14:32:05 · 졸음"
 std::wstring parse_clip_label(const std::wstring& s)
 {
     if (s.size() < 6) return s;
@@ -49,7 +49,7 @@ std::wstring parse_clip_label(const std::wstring& s)
     else if (state_en == L"absent")  state_kr = L"자리 비움";
     else                              state_kr = L"집중력 저하";
 
-    return s.substr(0, 2) + L":" + s.substr(2, 2) + L" · " + state_kr;
+    return s.substr(0, 2) + L":" + s.substr(2, 2) + L":" + s.substr(4, 2) + L" · " + state_kr;
 }
 
 } // namespace
@@ -140,7 +140,7 @@ void CClipsPanel::OnPaint()
     dc.FillSolidRect(&rc, kBg);
     dc.SetBkMode(TRANSPARENT);
 
-    // ── 패널 제목 ─────────────────────────────────────────────
+    // ── 패널 제목 ─────────────────────────────────────────────────────
     CFont title_font;
     title_font.CreateFont(20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -151,7 +151,7 @@ void CClipsPanel::OnPaint()
     dc.DrawText(_T("클립 확인"), &title_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     dc.SelectObject(old);
 
-    // ── 클립 없을 때 ─────────────────────────────────────────
+    // ── 클립 없을 때 ───────────────────────────────────────────────
     if (sessions_.empty()) {
         CFont font;
         font.CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -165,7 +165,7 @@ void CClipsPanel::OnPaint()
         return;
     }
 
-    // ── 폰트 ─────────────────────────────────────────────────
+    // ── 폰트 ─────────────────────────────────────────────────────
     CFont sess_font;
     sess_font.CreateFont(14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -180,7 +180,7 @@ void CClipsPanel::OnPaint()
     int y = kHeaderH - scroll_pos_;
 
     for (const auto& se : sessions_) {
-        // ── 세션 헤더 행 ─────────────────────────────────────
+        // ── 세션 헤더 행 ───────────────────────────────────────────────
         if (y + kSessionRowH >= kHeaderH && y <= rc.bottom) {
             dc.FillSolidRect(CRect(rc.left, y, rc.right, y + kSessionRowH), kSessionBg);
             dc.FillSolidRect(CRect(rc.left, y, rc.left + 4, y + kSessionRowH), kAccent);
@@ -192,7 +192,7 @@ void CClipsPanel::OnPaint()
                         static_cast<int>(se.display_name.size()),
                         &name_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-            // 클립 개수 뱃지 (오른쪽)
+            // 클립 개수 뜟지 (오른쪽)
             CFont badge_font;
             badge_font.CreateFont(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -208,7 +208,7 @@ void CClipsPanel::OnPaint()
         }
         y += kSessionRowH;
 
-        // ── 클립 행들 ─────────────────────────────────────────
+        // ── 클립 행들 ──────────────────────────────────────────────────
         for (int ci = 0; ci < static_cast<int>(se.clips.size()); ++ci) {
             if (y + kClipRowH >= kHeaderH && y <= rc.bottom) {
                 const COLORREF bg = (ci % 2 == 0) ? kClipBg : kClipAltBg;
@@ -301,7 +301,7 @@ const CClipsPanel::ClipEntry* CClipsPanel::hit_test_clip(CPoint pt) const
 
     int y = kHeaderH - scroll_pos_;
     for (const auto& se : sessions_) {
-        y += kSessionRowH; // 세션 헤더 건너뜀
+        y += kSessionRowH; // 세션 헤더 건너뚁
         for (const auto& clip : se.clips) {
             if (pt.y >= y && pt.y < y + kClipRowH) return &clip;
             y += kClipRowH;
