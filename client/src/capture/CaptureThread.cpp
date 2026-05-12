@@ -49,8 +49,8 @@ void CaptureThread::run(int camera_index, int fps)
         return;
     }
 
-    const auto frame_interval = std::chrono::milliseconds(fps > 0 ? 1000 / fps : 33);
-
+    // camera blocking read (capture >>) already paces at the camera's
+    // native frame rate — no additional sleep needed
     while (running_) {
         Frame frame;
         capture >> frame.mat;
@@ -62,7 +62,5 @@ void CaptureThread::run(int camera_index, int fps)
         render_buffer_.push(frame);
         send_buffer_.push(frame);
         shadow_buffer_.push(frame);
-
-        std::this_thread::sleep_for(frame_interval);
     }
 }

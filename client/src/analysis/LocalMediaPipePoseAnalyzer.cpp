@@ -9,7 +9,6 @@
 
 namespace {
 
-// ── face mesh eye landmark 인덱스 (AI 서버 코드와 동일) ────────────────
 const int kLeftEye[]  = {33, 160, 158, 133, 153, 144};
 const int kRightEye[] = {362, 385, 387, 263, 373, 380};
 
@@ -24,7 +23,6 @@ std::wstring model_path(const wchar_t* name)
     return path;
 }
 
-// wstring → string (실행파일 기준 경로에 사용)
 std::string wpath_to_str(const std::wstring& wp)
 {
     if (wp.empty()) return {};
@@ -43,8 +41,6 @@ double euclidean(float x1, float y1, float x2, float y2)
 
 } // namespace
 
-// ── 초기화 ─────────────────────────────────────────────────────────────
-
 bool LocalMediaPipePoseAnalyzer::initialize()
 {
     ort_opts_.SetIntraOpNumThreads(2);
@@ -60,14 +56,12 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         return false;
     }
 
-    // 실제 포즈 모델 출력 노드 이름을 열거해 저장 — 하드코딩 의존 제거
     {
         Ort::AllocatorWithDefaultOptions alloc;
         const size_t n_out = pose_session_->GetOutputCount();
         for (size_t i = 0; i < n_out; ++i) {
             auto name_alloc = pose_session_->GetOutputNameAllocated(i, alloc);
             const std::string name(name_alloc.get());
-            OutputDebugStringA(("[LocalPose] pose output[" + std::to_string(i) + "]: " + name + "\n").c_str());
             if (i == 0) pose_out0_name_ = name;
             else if (i == 1) pose_out1_name_ = name;
         }
@@ -75,9 +69,6 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         if (pose_out1_name_.empty()) pose_out1_name_ = "Identity_1";
     }
 
-    // 얼굴 위치 감지용 Haar cascade
-    // 1순위: 실행파일 옆의 models/ 디렉토리
-    // 2순위: OpenCV 기본 설치 경로 (hardcoded fallback)
     {
         const std::string local_cascade = wpath_to_str(model_path(L"haarcascade_frontalface_default.xml"));
         if (!local_cascade.empty()) face_cascade_.load(local_cascade);
@@ -92,8 +83,6 @@ bool LocalMediaPipePoseAnalyzer::initialize()
     return true;
 }
 
-// ── 메인 분석 ──────────────────────────────────────────────────────────
-
 std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& frame)
 {
     if (!initialized_ || frame.mat.empty()) return std::nullopt;
@@ -107,14 +96,17 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     Ort::MemoryInfo mem_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // ── 1. 얼굴 bbox 감지 + EMA 스무딩 ────────────────────────────────────
+    // ── 1. 얼굴 bbox 감지 + EMA ──────────────────────────────────────────────
     cv::Rect face_rect;
     {
-        cv::Mat gray;
-        cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(gray, gray);
+        // Haar cascade는 5프레임마다 한 번 실행. 중간 프레임은 EMA 값 유지.
+        // detectMultiScale이 ~15ms를 써서 5프레임 평균 ~3ms로 줄임.
+        const bool run_haar = (!face_cascade_.empty()) && ((haar_frame_count_++ % 5) == 0);
+        if (run_haar) {
+            cv::Mat gray;
+            cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
+            cv::equalizeHist(gray, gray);
 
-        if (!face_cascade_.empty()) {
             std::vector<cv::Rect> faces;
             face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
             if (!faces.empty()) {
@@ -146,7 +138,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
-    // ── 2. 상체 크롭 ───────────────────────────────────────────────────────────
+    // ── 2. 상체 크롭 ─────────────────────────────────────────────────────────
     cv::Rect body_crop;
     {
         const int face_cx = face_rect.x + face_rect.width / 2;
@@ -159,7 +151,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                              std::min(H - by, bh));
     }
 
-    // ── 3. Pose Landmark (256×256) ─────────────────────────────────────────────
+    // ── 3. Pose Landmark (256×256) ──────────────────────────────────────────
     bool pose_detected = false;
     {
         cv::Mat inp;
@@ -184,46 +176,25 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
             const float raw_flag = outs[1].GetTensorData<float>()[0];
             const float conf = 1.0f / (1.0f + std::exp(-raw_flag));
 
-            OutputDebugStringA(("[LocalPose] pose flag=" + std::to_string(raw_flag)
-                                + " conf=" + std::to_string(conf) + "\n").c_str());
-
             if (conf > 0.5f) {
                 const float* lm_ptr = outs[0].GetTensorData<float>();
                 const size_t elem_count = outs[0].GetTensorTypeAndShapeInfo().GetElementCount();
 
-                // ── stride 결정 ────────────────────────────────────────────────
-                // MediaPipe Pose 모델 변형:
-                //   33×3 = 99  (x,y,z)
-                //   33×5 = 165 (x,y,z,vis,pres)
-                //   39×5 = 195 (x,y,z,vis,pres - 확장 랜드마크 포함)
-                // 기존 로직은 195%3==0 이라서 stride=3으로 잘못 판단했음.
-                // 이로 인해 lm[11*3+1]이 visibility raw logit을 좌표로 사용,
-                // 671° 같은 물리적 불가능한 shoulder_diff 발생.
                 int stride = 3;
-                if      (elem_count % 39 == 0) stride = static_cast<int>(elem_count / 39); // 195→5
-                else if (elem_count % 33 == 0) stride = static_cast<int>(elem_count / 33); // 165→5, 99→3
+                if      (elem_count % 39 == 0) stride = static_cast<int>(elem_count / 39);
+                else if (elem_count % 33 == 0) stride = static_cast<int>(elem_count / 33);
                 else if (elem_count % 5 == 0 && elem_count / 5 >= 33) stride = 5;
-
-                OutputDebugStringA(("[LocalPose] landmark elem=" + std::to_string(elem_count)
-                                    + " stride=" + std::to_string(stride) + "\n").c_str());
 
                 const size_t min_needed = static_cast<size_t>(12 * stride + stride);
                 if (elem_count >= min_needed) {
                     const std::vector<float> lm(lm_ptr, lm_ptr + elem_count);
 
-                    // ── 랜드마크 가시성 검사 (stride≥4: x,y,z,vis,...) ────────────
-                    // 배경 인물의 랜드마크가 섞이는 것을 막기 위해,
-                    // 핵심 3개 랜드마크(왼쪽 귀, 양쪽 어깨) 가시성이 0.5 미만이면 포즈 무효 처리.
                     bool vis_ok = true;
                     if (stride >= 4) {
                         const float vis_ear  = lm[7  * stride + 3];
                         const float vis_shl  = lm[11 * stride + 3];
                         const float vis_shr  = lm[12 * stride + 3];
                         vis_ok = (vis_ear >= 0.5f && vis_shl >= 0.5f && vis_shr >= 0.5f);
-                        if (!vis_ok)
-                            OutputDebugStringA(("[LocalPose] vis low ear=" + std::to_string(vis_ear)
-                                + " shl=" + std::to_string(vis_shl)
-                                + " shr=" + std::to_string(vis_shr) + "\n").c_str());
                     }
 
                     if (vis_ok) {
@@ -257,7 +228,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
-    // ── 4. Face Landmark (192×192) ─────────────────────────────────────────────
+    // ── 4. Face Landmark (192×192) ──────────────────────────────────────────
     {
         const int pad = static_cast<int>(face_rect.width * 0.25);
         const int rx  = std::max(0, face_rect.x - pad);
@@ -305,9 +276,6 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
         }
     }
 
-    // collect_data.py: 얼굴 미감지 시 return None — pose 수치도 모두 무효
-    // face 감지 실패시 pose 값을 그대로 떑으면 Absent 상태에서
-    // garbage neck/shoulder 수치가 UI에 표시되는 문제 발생.
     if (result.face_detected == 0) {
         result.neck_angle    = 0.0;
         result.shoulder_diff = 0.0;
@@ -339,8 +307,6 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     return result;
 }
 
-// ── EAR 계산 ───────────────────────────────────────────────────────────
-
 double LocalMediaPipePoseAnalyzer::compute_ear(const std::vector<float>& lm) const
 {
     auto px = [&](int i){ return lm[i * 3]; };
@@ -364,10 +330,6 @@ void LocalMediaPipePoseAnalyzer::compute_head_pose(
     if (frame_w <= 0) return;
     auto lx = [&](int i) -> double { return lm[i * 3]; };
     auto ly = [&](int i) -> double { return lm[i * 3 + 1]; };
-    // face_landmark ONNX outputs coords in [0,192] crop space.
-    // Python training used full-frame [0,1] normalized coords:
-    //   head_yaw = (flm[454].x - flm[234].x) * 100
-    // Scale: crop [0,192] → full-frame [0,1] via * crop_w / (192 * frame_w)
     yaw   = (lx(454) - lx(234)) * 100.0 * static_cast<double>(crop_w)
             / (192.0 * static_cast<double>(frame_w));
     const double dy_p = ly(152) - ly(1);
