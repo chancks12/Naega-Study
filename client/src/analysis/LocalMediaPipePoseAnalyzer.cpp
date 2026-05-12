@@ -76,7 +76,7 @@ bool LocalMediaPipePoseAnalyzer::initialize()
     }
 
     // 얼굴 위치 감지용 Haar cascade
-    // 1순위: 실행파일 옵의 models/ 디렉토리
+    // 1순위: 실행파일 옆의 models/ 디렉토리
     // 2순위: OpenCV 기본 설치 경로 (hardcoded fallback)
     {
         const std::string local_cascade = wpath_to_str(model_path(L"haarcascade_frontalface_default.xml"));
@@ -294,7 +294,7 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
                 const float* lm_raw = outs[0].GetTensorData<float>();
                 const std::vector<float> lm468(lm_raw, lm_raw + 1404);
                 result.ear = compute_ear(lm468);
-                compute_head_pose(lm468, padded.width, padded.height,
+                compute_head_pose(lm468, padded.width, padded.height, W,
                                   result.head_yaw, result.head_pitch);
             } else {
                 result.face_detected = 0;
@@ -357,13 +357,19 @@ double LocalMediaPipePoseAnalyzer::compute_ear(const std::vector<float>& lm) con
 }
 
 void LocalMediaPipePoseAnalyzer::compute_head_pose(
-    const std::vector<float>& lm, int /*crop_w*/, int /*crop_h*/,
-    double& yaw, double& pitch) const
+    const std::vector<float>& lm, int crop_w, int /*crop_h*/,
+    int frame_w, double& yaw, double& pitch) const
 {
     yaw = pitch = 0.0;
+    if (frame_w <= 0) return;
     auto lx = [&](int i) -> double { return lm[i * 3]; };
     auto ly = [&](int i) -> double { return lm[i * 3 + 1]; };
-    yaw   = (lx(454) - lx(234)) * 100.0 / 192.0;
+    // face_landmark ONNX outputs coords in [0,192] crop space.
+    // Python training used full-frame [0,1] normalized coords:
+    //   head_yaw = (flm[454].x - flm[234].x) * 100
+    // Scale: crop [0,192] → full-frame [0,1] via * crop_w / (192 * frame_w)
+    yaw   = (lx(454) - lx(234)) * 100.0 * static_cast<double>(crop_w)
+            / (192.0 * static_cast<double>(frame_w));
     const double dy_p = ly(152) - ly(1);
     const double dx_p = lx(152) - lx(1);
     pitch = std::atan2(dy_p, dx_p) * 180.0 / CV_PI - 90.0;

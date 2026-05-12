@@ -29,6 +29,7 @@ private:
     double compute_ear(const std::vector<float>& lm468) const;
     void   compute_head_pose(const std::vector<float>& lm468,
                              int crop_w, int crop_h,
+                             int frame_w,
                              double& yaw, double& pitch) const;
     // stride: 랜드마크당 float 수 (3=x,y,z / 4=x,y,z,vis / 5=x,y,z,vis,pres)
     double compute_neck_angle(const std::vector<float>& lm,
