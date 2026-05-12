@@ -69,15 +69,6 @@ bool LocalMediaPipePoseAnalyzer::initialize()
         if (pose_out1_name_.empty()) pose_out1_name_ = "Identity_1";
     }
 
-    {
-        const std::string local_cascade = wpath_to_str(model_path(L"haarcascade_frontalface_default.xml"));
-        if (!local_cascade.empty()) face_cascade_.load(local_cascade);
-        if (face_cascade_.empty())
-            face_cascade_.load("C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml");
-        if (face_cascade_.empty())
-            OutputDebugStringA("[LocalPose] face cascade not found — full-frame crop fallback\n");
-    }
-
     initialized_ = true;
     OutputDebugStringA("[LocalPose] ONNX models loaded OK\n");
     return true;
@@ -96,47 +87,8 @@ std::optional<AnalysisResult> LocalMediaPipePoseAnalyzer::analyze(const Frame& f
     Ort::MemoryInfo mem_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // ── 1. 얼굴 bbox 감지 + EMA ──────────────────────────────────────────────
-    cv::Rect face_rect;
-    {
-        // Haar cascade는 5프레임마다 한 번 실행. 중간 프레임은 EMA 값 유지.
-        // detectMultiScale이 ~15ms를 써서 5프레임 평균 ~3ms로 줄임.
-        const bool run_haar = (!face_cascade_.empty()) && ((haar_frame_count_++ % 5) == 0);
-        if (run_haar) {
-            cv::Mat gray;
-            cv::cvtColor(frame.mat, gray, cv::COLOR_BGR2GRAY);
-            cv::equalizeHist(gray, gray);
-
-            std::vector<cv::Rect> faces;
-            face_cascade_.detectMultiScale(gray, faces, 1.1, 3, 0, {80, 80});
-            if (!faces.empty()) {
-                const cv::Rect best = *std::max_element(faces.begin(), faces.end(),
-                    [](const cv::Rect& a, const cv::Rect& b){ return a.area() < b.area(); });
-                const cv::Rect2f bf(static_cast<float>(best.x),   static_cast<float>(best.y),
-                                    static_cast<float>(best.width), static_cast<float>(best.height));
-                constexpr float kA = 0.25f;
-                if (ema_face_rect_.area() == 0.0f) {
-                    ema_face_rect_ = bf;
-                } else {
-                    ema_face_rect_.x      = kA * bf.x      + (1.f - kA) * ema_face_rect_.x;
-                    ema_face_rect_.y      = kA * bf.y      + (1.f - kA) * ema_face_rect_.y;
-                    ema_face_rect_.width  = kA * bf.width  + (1.f - kA) * ema_face_rect_.width;
-                    ema_face_rect_.height = kA * bf.height + (1.f - kA) * ema_face_rect_.height;
-                }
-            }
-        }
-
-        if (ema_face_rect_.area() > 0.0f) {
-            const int rx = std::max(0, static_cast<int>(ema_face_rect_.x));
-            const int ry = std::max(0, static_cast<int>(ema_face_rect_.y));
-            const int rw = std::min(W - rx, static_cast<int>(ema_face_rect_.width));
-            const int rh = std::min(H - ry, static_cast<int>(ema_face_rect_.height));
-            face_rect = (rw > 0 && rh > 0) ? cv::Rect(rx, ry, rw, rh)
-                                             : cv::Rect(W / 4, 0, W / 2, H / 2);
-        } else {
-            face_rect = cv::Rect(W / 4, 0, W / 2, H / 2);
-        }
-    }
+    // ── 1. 크롭 영역 (프레임 중앙 절반) ─────────────────────────────────────
+    const cv::Rect face_rect(W / 4, 0, W / 2, H / 2);
 
     // ── 2. 상체 크롭 ─────────────────────────────────────────────────────────
     cv::Rect body_crop;
