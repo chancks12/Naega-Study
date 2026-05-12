@@ -10,6 +10,7 @@
 
 namespace {
 constexpr int kProtoKeypointPush   = 2000;
+constexpr int kProtoCalibration    = 2002; // 캘리브레이션 기준값 계산용 (AI 서버 추론 제외)
 constexpr int kProtoAnalysisResult = 2001;
 constexpr std::uint32_t kMaxJsonBytes = 64 * 1024;
 
@@ -75,10 +76,6 @@ void AiTcpClient::stop()
     }
 }
 
-// ── 전송 루프 ───────────────────────────────────────────────────────────────
-// 매 프레임 keypoint를 서버로 전송하고, 즉시 UI를 갱신한다.
-// recv는 별도 스레드(recv_loop)에서 처리하므로 여기서는 대기하지 않는다.
-
 void AiTcpClient::run(std::string host,
                       std::uint16_t port,
                       int sample_interval)
@@ -101,7 +98,6 @@ void AiTcpClient::run(std::string host,
         connected_ = true;
         log_ai_tcp("connected");
 
-        // 수신 전용 스레드 시작
         std::atomic_bool conn_alive{ true };
         std::thread recv_th([this, socket, &conn_alive] {
             recv_loop(socket, conn_alive);
@@ -115,7 +111,6 @@ void AiTcpClient::run(std::string host,
                 continue;
             }
 
-            // 오래된 프레임을 버리고 가장 최신 프레임만 처리
             Frame newer;
             while (send_buffer_.try_pop(newer)) {
                 frame = std::move(newer);
@@ -129,13 +124,9 @@ void AiTcpClient::run(std::string host,
             if (!kp_opt.has_value()) continue;
             const AnalysisResult kp = kp_opt.value();
 
-            // ── keypoint 선형 보간 ────────────────────────────────────────────
-            // 카메라 fps < 30 이면 AI 서버(30fps 학습 기준)에 맞게 중간 keypoint를
-            // 선형 보간해 채워 넣는다.
-            // 예) 15fps → 실측 1개마다 보간 1개 삽입 → 서버는 30fps 등가로 수신
-            // n_interp: 이번 실측 keypoint 전에 보간해서 삽입할 개수
-            //   = target_fps / camera_fps - 1  (정수 나눗셈, 최솟값 0)
-            {
+            // 캘리브레이션 중에는 보간 프레임 삽입 불필요
+            // (AI 서버가 캘리브레이션 패킷을 누적하지 않으므로 개수 채울 필요 없음)
+            if (!calibration_mode_.load()) {
                 const int cam_fps = camera_fps_.load();
                 constexpr int kTargetFps = 30;
                 const int n_interp = (cam_fps > 0 && cam_fps < kTargetFps)
@@ -149,7 +140,7 @@ void AiTcpClient::run(std::string host,
                     interp.shoulder_diff = prev_kp_.shoulder_diff + alpha * (kp.shoulder_diff - prev_kp_.shoulder_diff);
                     interp.head_yaw      = prev_kp_.head_yaw      + alpha * (kp.head_yaw      - prev_kp_.head_yaw);
                     interp.head_pitch    = prev_kp_.head_pitch    + alpha * (kp.head_pitch    - prev_kp_.head_pitch);
-                    interp.face_detected = kp.face_detected; // 최신 감지 여부 사용
+                    interp.face_detected = kp.face_detected;
                     interp.timestamp_ms  = prev_kp_.timestamp_ms
                         + static_cast<std::uint64_t>(alpha * static_cast<float>(kp.timestamp_ms - prev_kp_.timestamp_ms));
 
@@ -161,7 +152,7 @@ void AiTcpClient::run(std::string host,
                 }
                 if (!conn_alive) break;
             }
-            prev_kp_ = kp; // 다음 보간을 위해 현재 keypoint 기억
+            prev_kp_ = kp;
 
             if (!send_keypoint_packet(socket, kp, session_id_.load(), ++frame_id)) {
                 log_ai_tcp("send failed; reconnecting");
@@ -169,8 +160,9 @@ void AiTcpClient::run(std::string host,
                 break;
             }
 
-            // UI 갱신: 최신 keypoint + 마지막으로 수신한 AI state 합성
-            // 서버 응답이 아직 없으면 keypoint 수치만으로 표시
+            // 캘리브레이션 중에는 UI 갱신 및 이벤트 감지 생략
+            if (calibration_mode_.load()) continue;
+
             AnalysisResult display = kp;
             bool ai_has_responded = false;
             {
@@ -190,8 +182,6 @@ void AiTcpClient::run(std::string host,
 
             result_buffer_.update(display);
 
-            // 이벤트 감지: AI 서버가 응답하기 전에는 state를 비워 로컬 임계값 경로 사용
-            // AI 응답 전 local state(프레임마다 바뀜)를 그대로 넘기면 이벤트 폭주
             AnalysisResult ev = display;
             if (!ai_has_responded) ev.state.clear();
             detector_.feed(ev, shadow_buffer_);
@@ -200,7 +190,7 @@ void AiTcpClient::run(std::string host,
         }
 
         conn_alive = false;
-        close_socket(socket);  // 소켓 닫으면 recv_loop의 블로킹 recv도 해제됨
+        close_socket(socket);
         recv_th.join();
         connected_ = false;
     }
@@ -208,22 +198,14 @@ void AiTcpClient::run(std::string host,
     log_ai_tcp("worker stopped");
 }
 
-// ── 수신 루프 ───────────────────────────────────────────────────────────────
-// 서버는 매 프레임에 응답을 전송한다.
-// SO_RCVTIMEO 만료(WSAETIMEDOUT)는 정상 — 응답이 없다는 뜻이므로 계속 대기.
-// WSAGetLastError()==0 은 소켓은 정상이나 파싱 실패 — 재접속하지 않고 무시.
-// 그 외 오류(실제 소켓 단절)만 재접속을 유도한다.
-
 void AiTcpClient::recv_loop(SOCKET socket, std::atomic_bool& conn_alive)
 {
     while (running_ && conn_alive) {
         AnalysisResult result;
         if (!recv_result_packet(socket, result)) {
             const int err = WSAGetLastError();
-            if (err == WSAETIMEDOUT) continue; // 응답 없음 → 대기 계속
+            if (err == WSAETIMEDOUT) continue;
             if (err == 0) {
-                // 소켓은 정상이나 JSON 파싱 실패 (protocol_no 불일치 등)
-                // 재접속하면 AI 서버의 150-frame 카운터가 리셋되므로 무시
                 log_ai_tcp("recv parse mismatch; ignoring packet");
                 continue;
             }
@@ -232,6 +214,9 @@ void AiTcpClient::recv_loop(SOCKET socket, std::atomic_bool& conn_alive)
             return;
         }
 
+        // 캘리브레이션 중 수신된 응답은 무시 (서버가 2002 패킷 처리 결과를 보낼 수 있음)
+        if (calibration_mode_.load()) continue;
+
         std::lock_guard<std::mutex> lock(result_mutex_);
         last_result_      = result;
         has_last_result_  = true;
@@ -239,15 +224,11 @@ void AiTcpClient::recv_loop(SOCKET socket, std::atomic_bool& conn_alive)
     }
 }
 
-// ── 소켓 연결 / 해제 ────────────────────────────────────────────────────────
-
 SOCKET AiTcpClient::connect_to(const std::string& host, std::uint16_t port)
 {
     SOCKET socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socket == INVALID_SOCKET) return INVALID_SOCKET;
 
-    // SO_RCVTIMEO: 서버가 매 프레임(33ms) 응답하므로 실질 발동 없음 — 연결 완전 단절 감지용
-    // SO_SNDTIMEO: 150프레임(5초) 누적 중 네트워크 지연으로 조기 재연결되지 않도록 여유롭게 설정
     DWORD rcv_timeout_ms = 10000;
     DWORD snd_timeout_ms = 8000;
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&rcv_timeout_ms), sizeof(rcv_timeout_ms));
@@ -277,16 +258,17 @@ void AiTcpClient::close_socket(SOCKET& socket)
     }
 }
 
-// ── keypoint JSON 전송 (단일 프레임) ────────────────────────────────────────
-
 bool AiTcpClient::send_keypoint_packet(SOCKET socket,
                                        const AnalysisResult& kp,
                                        long long session_id,
                                        long long frame_id)
 {
+    // 캘리브레이션 모드이면 2002, 일반 추론이면 2000
+    const int proto = calibration_mode_.load() ? kProtoCalibration : kProtoKeypointPush;
+
     std::ostringstream json;
     json << "{"
-         << "\"protocol_no\":"    << kProtoKeypointPush
+         << "\"protocol_no\":"    << proto
          << ",\"session_id\":"    << session_id
          << ",\"frame_id\":"      << frame_id
          << ",\"timestamp_ms\":"  << kp.timestamp_ms
@@ -300,8 +282,6 @@ bool AiTcpClient::send_keypoint_packet(SOCKET socket,
 
     return send_json_only(socket, json.str());
 }
-
-// ── AI 서버 응답 수신 ────────────────────────────────────────────────────────
 
 bool AiTcpClient::recv_result_packet(SOCKET socket, AnalysisResult& out)
 {
@@ -326,15 +306,13 @@ bool AiTcpClient::recv_result_packet(SOCKET socket, AnalysisResult& out)
     out.focus_score  = static_cast<int>(extract_number(json, "focus_score"));
     out.confidence   = extract_number(json, "confidence", 1.0);
     out.state        = extract_string(json, "state");
-    if (out.state.empty()) out.state = "focus"; // AI 서버가 필드 누락 시 DB null 방지
+    if (out.state.empty()) out.state = "focus";
     out.posture_ok   = extract_bool(json, "posture_ok", true);
     out.drowsy       = extract_bool(json, "is_drowsy") || extract_bool(json, "drowsy");
     out.absent       = extract_bool(json, "is_absent")  || extract_bool(json, "absent");
 
     return true;
 }
-
-// ── 전송/수신 헬퍼 ──────────────────────────────────────────────────────────
 
 bool AiTcpClient::send_json_only(SOCKET socket, const std::string& json)
 {
@@ -373,8 +351,6 @@ bool AiTcpClient::recv_all(SOCKET socket, char* data, int length)
     return true;
 }
 
-// ── JSON 파싱 유틸 ──────────────────────────────────────────────────────────
-
 std::string AiTcpClient::now_iso8601()
 {
     SYSTEMTIME st{};
@@ -394,9 +370,9 @@ std::string AiTcpClient::extract_string(const std::string& json, const std::stri
     if (pos == std::string::npos) return {};
 
     pos += pattern.size();
-    while (pos < json.size() && json[pos] == ' ') ++pos; // 콜론 뒤 공백 허용
+    while (pos < json.size() && json[pos] == ' ') ++pos;
     if (pos >= json.size() || json[pos] != '"') return {};
-    ++pos; // 여는 따옴표 건너뜀
+    ++pos;
 
     std::string value;
     for (std::size_t i = pos; i < json.size(); ++i) {

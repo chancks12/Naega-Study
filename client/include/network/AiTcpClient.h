@@ -23,11 +23,10 @@
 // 수신: 별도 스레드에서 서버 응답 대기. 서버는 150프레임 추론 후 state가
 //       바뀔 때만 응답을 보내므로, 응답이 없는 구간에는 마지막 state 유지.
 //
-// 흐름:
-//   CaptureThread → send_buffer_
-//     → LocalMediaPipePoseAnalyzer (keypoint 추출)
-//       → send_keypoint_packet() ──────────────────→ AI 서버 (매 프레임)
-//       ← recv_loop() (별도 스레드, state 변화 시만 수신) ←
+// 프로토콜 번호:
+//   2000 (kProtoKeypointPush)  — 일반 추론용 프레임
+//   2002 (kProtoCalibration)   — 캘리브레이션 기준값 계산용 프레임
+//   2001 (kProtoAnalysisResult)— AI 서버 → 클라이언트 응답
 class AiTcpClient {
 public:
     AiTcpClient(CaptureThread::SendFrameBuffer& send_buffer,
@@ -45,27 +44,25 @@ public:
     // 카메라 실제 fps 설정 — keypoint 보간 비율 및 클립 윈도우(7초) 계산에 사용
     void set_camera_fps(int fps);
 
+    // 캘리브레이션 모드 전환
+    // true  → 이후 전송 패킷에 protocol_no=2002 사용 (AI 서버가 추론에 사용하지 않음)
+    // false → 이후 전송 패킷에 protocol_no=2000 사용 (일반 추론)
+    void set_calibration_mode(bool on) { calibration_mode_.store(on); }
+
     bool is_connected() const { return connected_.load(); }
 
     using ResultCallback = std::function<void(const AnalysisResult&)>;
     void set_result_callback(ResultCallback cb) { result_callback_ = std::move(cb); }
 
 private:
-    // 전송 루프 (worker_ 스레드)
     void run(std::string host, std::uint16_t port, int sample_interval);
-
-    // 수신 루프 (run 내부에서 별도 스레드로 실행)
-    // conn_alive가 false가 되거나 수신 오류 발생 시 종료
     void recv_loop(SOCKET socket, std::atomic_bool& conn_alive);
 
     SOCKET connect_to(const std::string& host, std::uint16_t port);
     void close_socket(SOCKET& socket);
 
-    // 단일 프레임 keypoint JSON 전송
     bool send_keypoint_packet(SOCKET socket, const AnalysisResult& kp,
                               long long session_id, long long frame_id);
-
-    // AI 서버 응답 수신 (state 변화 시에만 서버가 전송)
     bool recv_result_packet(SOCKET socket, AnalysisResult& out);
 
     static bool send_all(SOCKET socket, const char* data, int length);
@@ -91,10 +88,11 @@ private:
     AnalysisResult   last_result_;
     bool             has_last_result_ = false;
 
-    AnalysisResult   prev_kp_;           // 선형 보간 기준점 (직전 실측 keypoint)
+    AnalysisResult   prev_kp_;
 
     std::atomic<long long> session_id_{ 0 };
-    std::atomic<int>       camera_fps_{ 30 }; // 사용자 설정 카메라 fps
+    std::atomic<int>       camera_fps_{ 30 };
+    std::atomic_bool       calibration_mode_{ false };
     std::atomic_bool       running_{ false };
     std::atomic_bool       connected_{ false };
     std::thread            worker_;

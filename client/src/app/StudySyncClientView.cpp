@@ -67,8 +67,6 @@ void CStudySyncClientView::update_session_id(long long session_id)
     if (transports_.log_sink) {
         transports_.log_sink->set_session_id(session_id);
     }
-    // AI TCP 클라이언트는 이미 동작 중이므로 재시작 없이 session_id만 갱신
-    // 이후 전송 패킷부터 새 session_id가 반영됨
     ai_tcp_client_.update_session_id(session_id);
 }
 
@@ -110,6 +108,8 @@ void CStudySyncClientView::begin_calibration()
         calibrating_ = true;
         calib_tick_  = kCalibSec;
     }
+    // 캘리브레이션 시작 — AI TCP 에 2002 프로토콜로 전송하도록 알림
+    ai_tcp_client_.set_calibration_mode(true);
     render_thread_.set_calibration_countdown(kCalibSec);
     SetTimer(IDT_CALIB, 1000, nullptr);
 }
@@ -128,6 +128,9 @@ void CStudySyncClientView::finish_calibration()
         }
     }
 
+    // 캘리브레이션 종료 — 이후 프레임은 2000 (일반 추론)으로 전송
+    ai_tcp_client_.set_calibration_mode(false);
+
     constexpr double kMargin = 10.0;
     const double threshold = neck_avg + kMargin;
 
@@ -141,7 +144,6 @@ void CStudySyncClientView::finish_calibration()
         neck_avg, threshold, calib_samples_.size());
     OutputDebugStringA(dbg);
 
-    // 캘리브레이션 완료 → 기본 상태 "공부 중"으로 초기화 (AI 응답 전까지 표시)
     AnalysisResult default_result;
     default_result.state        = "focus";
     default_result.posture_ok   = true;
@@ -170,7 +172,6 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CWnd::OnCreate(lpCreateStruct) == -1) return -1;
 
-    // ── 파이프라인 시작 ─────────────────────────────────────
     worker_pool_.start();
     capture_thread_.start(0, transport_config_.capture_fps);
     render_thread_.start(m_hWnd, result_buffer_);
@@ -202,7 +203,6 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
             if (session_id_ > 0 && transports_.log_sink)
                 transports_.log_sink->append_analysis(r);
 
-            // AI 서버 state 변화 시에만 알림 (로컬 임계값 기반 알림 제거)
             if (!r.state.empty() && r.state != last_ai_state_) {
                 last_ai_state_ = r.state;
                 if (r.state == "drowsy") {
@@ -232,7 +232,6 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
                 }
             }
         });
-        // 저장된 카메라 FPS 로드 후 주입 (보간 비율 결정)
         ai_tcp_client_.set_camera_fps(FpsStore{}.load());
         ai_tcp_client_.start(
             transport_config_.ai_server_host,
@@ -256,7 +255,6 @@ int CStudySyncClientView::OnCreate(LPCREATESTRUCT lpCreateStruct)
     return 0;
 }
 
-// 모든 워커 스레드 정지 — 백그라운드 스레드에서 호출해 UI 블로킹 방지
 void CStudySyncClientView::stop_all_threads()
 {
     if (threads_stopped_.exchange(true)) return;
@@ -280,7 +278,6 @@ void CStudySyncClientView::stop_all_threads()
 
 void CStudySyncClientView::OnDestroy()
 {
-    // 세션 종료 API — 비동기
     if (session_id_ > 0) {
         const std::string end_time = current_iso8601();
         const long long sid = session_id_;
@@ -300,13 +297,11 @@ void CStudySyncClientView::OnDestroy()
         }).detach();
     }
 
-    // 타이머는 UI 스레드에서만 해제 가능
     KillTimer(IDT_LOG_FLUSH);
     KillTimer(IDT_CALIB);
     KillTimer(IDT_CALIB_HIDE);
     KillTimer(IDT_STATS_FETCH);
 
-    // stop_all_threads()가 백그라운드에서 이미 완료된 경우 재호출 건너뜀
     stop_all_threads();
 
     CWnd::OnDestroy();
@@ -325,7 +320,6 @@ BOOL CStudySyncClientView::OnEraseBkgnd(CDC* /*pDC*/)
 void CStudySyncClientView::OnSize(UINT nType, int cx, int cy)
 {
     CWnd::OnSize(nType, cx, cy);
-
     if (cx > 0 && cy > 0) {
         render_thread_.notify_resize(static_cast<UINT>(cx), static_cast<UINT>(cy));
     }
@@ -360,4 +354,3 @@ void CStudySyncClientView::OnTimer(UINT_PTR nIDEvent)
 
     CWnd::OnTimer(nIDEvent);
 }
-
